@@ -1,0 +1,10 @@
+# credentials issued with the dataset: never commit
+credentials.csv
+*.zip
+.env
+
+# local working files
+.planning/
+.ipynb_checkpoints/
+__pycache__/
+aireadi_cache/

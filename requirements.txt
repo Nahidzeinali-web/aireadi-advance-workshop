@@ -1,0 +1,11 @@
+boto3
+pydicom>=3.0
+wfdb
+numpy
+pandas>=2.1
+matplotlib
+seaborn>=0.13
+scikit-learn
+torch
+jupyterlab
+nbformat
