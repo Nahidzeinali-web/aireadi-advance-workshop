@@ -1,11 +1,9 @@
-boto3
-pydicom>=3.0
-wfdb
+# notebook (install torch first with: pip install torch --index-url https://download.pytorch.org/whl/cpu)
 numpy
-pandas>=2.1
-matplotlib
+pandas>=2.0
+matplotlib>=3.6
 seaborn>=0.13
 scikit-learn
+pillow
 torch
 jupyterlab
-nbformat

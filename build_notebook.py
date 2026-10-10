@@ -4,6 +4,8 @@ Each cell carries its presenter notes in metadata["presenter_notes"], so the not
 and the notes file never drift apart. Edit this file, then run:
 
     python build_notebook.py
+
+The notebook it writes has no outputs; run it top to bottom before committing.
 """
 from pathlib import Path
 import nbformat as nbf
@@ -24,1004 +26,1141 @@ def code(src, notes="", minutes=None, optional=False):
 
 
 # ---------------------------------------------------------------------------
-# 0. Title
+# Title
 # ---------------------------------------------------------------------------
 md(r"""
-# AI-READI in the Cloud: a hands-on tour of the synthetic T2DM dataset
+# Which machine took this eye scan?
+### A hands-on introduction to machine learning with synthetic AI-READI data
 
-**Dataset:** ADVANCE Center Synthetic AI-READI Dataset for T2DM Research (read-only S3 bucket)
-**Runs on:** any Jupyter environment with network access to S3. A GPU is optional.
+In this notebook you will teach a computer to recognize which machine took a picture of the back of the eye, even
+from small, plain pieces of the picture that people cannot tell apart. Along the way you will see how machine
+learning works from first principles: what a model is, how it measures its own mistakes, how it learns from them,
+and why one kind of model, the convolutional neural network, is the right tool for pictures.
 
-**What we will do**
+You do not need to know how to program. Run each gray code box in order with **Shift + Enter** and read the text
+around it.
 
-1. Meet AI-READI and its synthetic twin
-2. Connect to the data in the cloud
-3. Tour every data type: retinal photos, OCT, ECG, wearables and CGM, clinical records
-4. Look for relationships across data types
-5. Play a game: *which device took this scan?* Humans vs a small neural network
-6. Leave with research questions worth a grant
+**Plan**
+
+1. Check your computer
+2. Meet the data
+3. Machine learning from first principles
+4. From numbers to pictures: why a convolutional neural network
+5. The challenge: which machine took this scan?
+6. What it means
+7. Data license and credits
 """,
 notes="""
-Welcome everyone. Today is about how quickly you can go from zero to real questions on a large multimodal
-diabetes dataset, entirely in the cloud. No deep learning background is needed.
+Welcome. The slides introduced the AI-READI study; this notebook is the hands-on part. Nobody needs to code: the
+only skill is Shift + Enter.
 
-Frame the session: everything you see runs from one notebook against a read-only S3 bucket. Nothing is
-downloaded in bulk; we pull only what each step needs.
+Say what people will leave with: three ideas that explain nearly all of machine learning (a rule with knobs, an
+error score, turning knobs downhill), and an intuition for why pictures need a special kind of model.
 
-Mention that attendees can follow along on their own VM if they have credentials, or just watch.
+Everything runs on a laptop processor from a small local data folder. No cloud account, no internet.
 """, minutes=1)
 
 # ---------------------------------------------------------------------------
-# 1. Intro to AI-READI
+# 1. Computer
 # ---------------------------------------------------------------------------
 md(r"""
-## 1. What is AI-READI?
+## 1. Check your computer
 
-**AI-READI** (Artificial Intelligence Ready and Exploratory Atlas for Diabetes Insights) is one of the flagship
-data generation projects of the NIH Common Fund **Bridge2AI** program. Its aim is a dataset built for AI from day
-one, to study **salutogenesis** in type 2 diabetes: what separates people who move toward health from those who
-do not.
+Everything runs on an ordinary laptop. No graphics card, cloud account or internet connection is needed once the
+software is installed.
 
-**Who is in it.** The study targets 4,000 adults aged 40 and older, recruited at UAB, UCSD and UW, and balanced by
-design across three factors:
-
-| Factor | Groups |
-|---|---|
-| Diabetes severity | no diabetes; prediabetes or lifestyle-controlled; oral medication or non-insulin injectables; insulin |
-| Race and ethnicity | Asian, Black, Hispanic, White |
-| Sex | female, male |
-
-**What is measured.** Each participant contributes many data types, each stored in a community standard:
-
-| Data type | Devices | Standard |
+| | Needed | Comfortable |
 |---|---|---|
-| Retinal photography (color, infrared, autofluorescence) | Optomed Aurora, iCare Eidon, Topcon Maestro2, Topcon Triton, Heidelberg Spectralis, Zeiss Cirrus | DICOM |
-| Retinal OCT and OCT angiography | Heidelberg Spectralis, Topcon Maestro2, Topcon Triton, Zeiss Cirrus | DICOM |
-| 12-lead ECG | Philips PageWriter TC30 | WFDB |
-| Continuous glucose monitoring (10 days) | Dexcom G6 | Open mHealth JSON |
-| Physical activity, heart rate, sleep, stress | Garmin Vivosmart 5 | Open mHealth JSON |
-| Home environment (particulates, VOCs, light) | LeeLab Anura sensor | CSV |
-| Clinical data, labs, surveys, cognition | study visit | OMOP CDM |
+| Processor | 2 cores | 4 or more cores |
+| Memory | 4 GB | 8 GB |
+| Free disk space | 2 GB (software about 1.5 GB, data 75 MB) | |
+| Software | Python 3.10 or newer, with the packages in `requirements.txt` | |
+| Time to run every cell | about 5 minutes on 4 cores | |
 
-**Releases.** v1.0.0 (May 2024, 204 pilot participants), v2.0.0 (Nov 2024, 863 added), v3.0.0 (Nov 2025, 1,213
-added, about 2,280 in total and 3.82 TB). The real data is distributed through **FAIRhub** under a data license
-agreement; a few sensitive fields need Data Access Committee approval.
-
-Sources: [docs.aireadi.org](https://docs.aireadi.org/), [changelog](https://docs.aireadi.org/docs/3/changelog),
-[protocol paper, BMJ Open 2025](https://pmc.ncbi.nlm.nih.gov/articles/PMC11800295/),
-[Nature Metabolism 2024](https://doi.org/10.1038/s42255-024-01165-x), [aireadi.org](https://aireadi.org/).
+The next two cells check the software and report what your computer has.
 """,
 notes="""
-Two or three minutes, no more. The points that matter for the rest of the demo:
+If someone is running along on their own laptop, this is where problems show up. The most common one is a missing
+package: the next cell prints the exact command to fix it.
 
-1. It is deliberately balanced by diabetes severity and by race and ethnicity. That design is what makes
-   fairness and "path back to health" questions answerable.
-2. It is multimodal per person: eyes, heart, glucose, activity, environment, labs. Most diabetes datasets have
-   one or two of these.
-3. The retinal images come from six different devices. Remember this; it is the setup for the game in Part 5.
-4. Everything is in a standard format (DICOM, WFDB, OMOP), so the same code works on the real release.
-
-If asked about access: real data is on FAIRhub (fairhub.io) under a license; restricted fields such as
-race/ethnicity, sex, zip code and medications need a separate request. Use is limited to T2DM research.
-""", minutes=3)
-
-md(r"""
-### 1.1 Why a synthetic version?
-
-The real release needs a data license, and some fields need committee approval. To let people explore, teach and
-prototype first, the **ADVANCE Center** at Vanderbilt University Medical Center built a synthetic companion from
-AI-READI v3.0.0, published on the AWS Marketplace as *ADVANCE Center Synthetic AI-READI Dataset for T2DM Research*
-and archived on [Zenodo](https://doi.org/10.5281/zenodo.22944362).
-
-How it was made ([code](https://github.com/nicholas-j-jackson/ai_readi_synth)):
-
-* **Images:** a latent diffusion model trained on 256 x 256 images and conditioned on each image's
-  device, anatomical region, laterality (left or right eye) and disease labels.
-* **Tabular data:** a reinforcement-learning based generator that produces whole participant records.
-* The three modules (fundus photos, OCT, tabular) were **generated independently**.
-
-That last point shapes what we can and cannot ask:
-
-| Module | Records | Linked to |
-|---|---|---|
-| Retinal photography | 93,856 images | its own AMD, glaucoma and diabetic retinopathy labels |
-| Retinal OCT | 56,512 B-scans | its own AMD, glaucoma and diabetic retinopathy labels |
-| Tabular cohort | 10,518 synthetic participants | clinical labs, conditions, ECG measurements, wearable and CGM summaries, all sharing one `participant_id` |
-
-Images are **not** linked to the tabular participants. A `participant_id` of 42 in the OCT folder and 42 in the ECG
-folder are unrelated synthetic people.
-""",
-notes="""
-This is the most important caveat of the talk, so say it plainly: synthetic data is for exploring, teaching and
-building pipelines. Findings have to be confirmed on the real data.
-
-Explain the linkage table. Inside the tabular cohort, the generator produced whole participants, so labs, ECG,
-wearable and CGM values for participant 42 belong together and their relationships were learned from real data.
-Images were generated separately, one synthetic person per image, so you cannot link a retina to an HbA1c here.
-
-Why ADVANCE: it is a Vanderbilt center (Biomedical Informatics) with deep privacy expertise; Brad Malin is a
-co-director and an author on the synthetic dataset, together with Aaron Lee.
-""", minutes=2)
-
-# ---------------------------------------------------------------------------
-# 2. Connect
-# ---------------------------------------------------------------------------
-md(r"""
-## 2. Connect to the data
-
-The bucket is read-only and accessed with **temporary AWS credentials**. The instructions say they last 12 hours; in our testing they expired after about **one hour**, so download a fresh set right before you start. You get them as a ZIP
-containing `credentials.csv`. The notebook looks for credentials in this order:
-
-1. `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` already set in the environment
-2. a `credentials.csv` file, at the path in `AIREADI_CREDS_CSV` or in the working directory
-
-Never paste keys into a notebook cell; notebooks get shared and committed.
-""",
-notes="""
-While this cell is on screen, show where the credentials ZIP lives on the VM (or say you exported the three
-environment variables before starting Jupyter). Point out the expiry: the instructions promise 12 hours but in our
-testing the tokens died after about one hour. Download the ZIP within the hour before the session. If a cell
-starts failing with ExpiredToken, download a fresh ZIP and rerun the credentials cell (the cache means nothing
-already downloaded is lost).
+The heaviest step (training in Part 5) uses at most 4 processor cores, so the laptop stays responsive.
 """, minutes=1)
 
 code(r"""
-# Install anything a fresh VM image is missing (quiet, one time).
-import importlib.util, subprocess, sys
-NEEDED = {"boto3": "boto3", "pydicom": "pydicom", "wfdb": "wfdb", "seaborn": "seaborn",
-          "sklearn": "scikit-learn", "torch": "torch"}
-missing = [pkg for mod, pkg in NEEDED.items() if importlib.util.find_spec(mod) is None]
-if missing:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", *missing])
-print("installed:", missing or "nothing, all present")
+import importlib.util
+needed = {"numpy": "numpy", "pandas": "pandas", "matplotlib": "matplotlib", "seaborn": "seaborn",
+          "sklearn": "scikit-learn", "torch": "torch", "PIL": "pillow"}
+missing = [pkg for module, pkg in needed.items() if importlib.util.find_spec(module) is None]
+print("all packages present" if not missing else
+      f"missing: {', '.join(missing)}. In a terminal, run: pip install -r requirements.txt")
 """,
 notes="""
-Run it and move on. On a Deep Learning VM image everything is usually present already. If torch has to be
-installed live it can take a few minutes, so do this before the session starts.
-""", minutes=0.5)
+Run it and move on. If something is missing, install it in a terminal and restart the notebook (Kernel, Restart).
+""", minutes=0.25)
 
 code(r"""
-import os, csv, time
+import os, platform, time
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import boto3, botocore, pydicom, wfdb
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from PIL import Image
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
 
-BUCKET = os.environ.get("AIREADI_BUCKET", "ai-readi-sd")     # identical mirror: "ai-readi-bucket" in us-east-1
-REGION = os.environ.get("AIREADI_REGION", "us-east-2")
-ROOT = "ai-readi"                                            # every key starts with this prefix
-CACHE = Path(os.environ.get("AIREADI_CACHE", "~/aireadi_cache")).expanduser()
+DATA = Path("data")
 SEED = 42
+cores = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
+torch.set_num_threads(min(4, cores))          # leave room for the rest of the computer
+try:
+    memory_gb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
+except (ValueError, AttributeError, OSError):
+    memory_gb = float("nan")                  # not reported on Windows
 
-# One chart style for the whole notebook: light surface, quiet axes, thin marks.
+# one chart style for the whole notebook
 INK, INK2, MUTED, GRID, AXIS, SURFACE = "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7", "#fcfcfb"
-SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]   # fixed categorical order
+SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]
+BLUES = sns.blend_palette(["#f0efec", "#86b6ef", "#2a78d6", "#0d366b"], as_cmap=True)
 plt.rcParams.update({
     "figure.facecolor": SURFACE, "axes.facecolor": SURFACE, "savefig.facecolor": SURFACE,
     "text.color": INK, "axes.labelcolor": INK2, "xtick.color": MUTED, "ytick.color": MUTED,
-    "axes.edgecolor": AXIS, "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.8,
+    "axes.edgecolor": AXIS, "axes.grid": True, "grid.color": GRID, "grid.linewidth": 0.8, "axes.axisbelow": True,
     "axes.spines.top": False, "axes.spines.right": False, "axes.titleweight": "bold",
-    "axes.titlesize": 11, "font.size": 10, "lines.linewidth": 2, "figure.dpi": 110, "axes.axisbelow": True,
+    "axes.titlesize": 11, "font.size": 10, "lines.linewidth": 2, "figure.dpi": 110,
 })
-pd.set_option("display.max_columns", 30)
-print("bucket:", BUCKET, "| region:", REGION)
+
+def no_axes(ax):
+    ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+    for side in ax.spines.values():
+        side.set_visible(False)
+
+print(f"Python {platform.python_version()} on {platform.system()}")
+print(f"processor cores: {cores} (training will use {torch.get_num_threads()})")
+print("memory: " + ("not reported on this system" if memory_gb != memory_gb else
+                    "enough (4 GB needed)" if memory_gb >= 4 else "below the 4 GB needed"))
+print(f"graphics card: {'present, not needed' if torch.cuda.is_available() else 'none, not needed'}")
+print(f"data folder: {len(list((DATA / 'scans').glob('*.png'))):,} scans found" if DATA.exists()
+      else "data folder not found: put the 'data' folder next to this notebook")
 """,
 notes="""
-Configuration lives in one place. Mention the two identical buckets: ai-readi-sd in us-east-2 and
-ai-readi-bucket in us-east-1. Pick the one in the same region as your VM; transfers inside a region are fast
-and free.
-
-The cache folder means every file is downloaded once. Rerunning the notebook is quick.
+This loads the tools and sets a consistent chart style. The printout should say about 2,000 scans found. If it
+says the data folder is missing, the folder has to sit next to the notebook file.
 """, minutes=0.5)
 
-code(r"""
-def load_credentials(csv_path=os.environ.get("AIREADI_CREDS_CSV", "credentials.csv")):
-    # Use AWS_* variables if they are set, otherwise read the credentials.csv issued with the dataset.
-    if os.environ.get("AWS_ACCESS_KEY_ID"):
-        return "environment variables"
-    row = next(csv.DictReader(open(Path(csv_path).expanduser())))
-    os.environ["AWS_ACCESS_KEY_ID"] = row["access_key"]
-    os.environ["AWS_SECRET_ACCESS_KEY"] = row["secret_key"]
-    os.environ["AWS_SESSION_TOKEN"] = row["session_token"]
-    return str(csv_path)
-
-source = load_credentials()
-role = boto3.client("sts").get_caller_identity()["Arn"].split("/")[-2]
-s3 = boto3.client("s3", region_name=REGION,
-                  config=botocore.config.Config(max_pool_connections=64))
-print(f"credentials from {source}; assumed role: {role}")
-""",
-notes="""
-The output should say the role is s3-readonly. Point out that the notebook never prints the keys.
-
-If this fails: ExpiredToken means the token has lapsed (about an hour in practice); AccessDenied usually means the variables from an older
-ZIP are still exported in the shell. Restart the kernel after exporting new ones.
-""", minutes=0.5)
-
+# ---------------------------------------------------------------------------
+# 2. Data
+# ---------------------------------------------------------------------------
 md(r"""
-### 2.1 What is in the bucket
+## 2. Meet the data
 
-Listing all 198,124 objects takes a minute, so here is the inventory up front. The cell below walks the top two
-levels live.
+AI-READI is a large study of type 2 diabetes that collects eye pictures, heart tracings, blood tests, glucose
+monitors and activity trackers from the same people. The real data requires a data agreement, so this workshop
+uses a **synthetic** version made by the ADVANCE Center at Vanderbilt University Medical Center: a computer program
+learned the patterns in the real data and generated new, made-up records that follow the same patterns. No record
+belongs to a real person.
 
-| Prefix | Contents | Files | Size |
-|---|---|---:|---:|
-| `fundus/retinal_photography/` | color (CFP), infrared (IR) and autofluorescence (FAF) photos, DICOM, plus `manifest.tsv` | 93,861 | 18.6 GB |
-| `fundus/clinical_data/` | `observation.csv`: AMD, glaucoma, diabetic retinopathy per image (OMOP) | 1 | 52 MB |
-| `oct/retinal_oct/` | structural OCT B-scans, DICOM, plus `manifest.tsv` | 83,221 | 10.5 GB |
-| `oct/clinical_data/` | `observation.csv`: AMD, glaucoma, diabetic retinopathy per B-scan (OMOP) | 1 | 31 MB |
-| `tabular/cardiac_ecg/` | one 12-lead ECG record per participant (WFDB `.hea` + `.dat`; waveforms are flat placeholders, measurements are synthetic), plus `manifest.tsv` | 21,037 | 1.4 GB |
-| `tabular/clinical_data/` | `measurement.csv` (73 vitals, labs and cognitive scores), `condition_occurrence.csv` (30 conditions) | 2 | 131 MB |
-| `tabular/synthetic_wearable_activity_glucose.tsv` | wearable and CGM summary features, one row per participant | 1 | 2 MB |
+The `data` folder holds a small sample of it:
 
-In total 30.7 GB. The OCT folder holds 26,708 extra 512 x 512 scans that are not in the manifest; this notebook uses
-the manifest, which lists the 256 x 256 B-scans.
+| | |
+|---|---|
+| `scans/` | 2,000 retina cross-section scans, 500 from each of four machines |
+| `gallery/` | 13 example pictures, one for each kind of picture and machine |
+| `participants.csv` | 16 measurements for 10,518 synthetic participants |
 """,
 notes="""
-Walk the table top to bottom. Stress that the manifests and clinical CSVs are tiny (well under 300 MB together),
-so you can explore metadata for the whole dataset before downloading a single image.
+Keep this short; the slides covered the study. The one idea to land is "synthetic": generated by a program that
+learned from the real participants, so it looks and behaves like the real thing but contains nobody.
 
-The note about 26,708 unlisted OCT files is a real quirk we found; mention it only if someone asks about file
-counts.
+The sample is licensed to our group (Part 7 has the details), so it does not get posted or forwarded.
 """, minutes=1)
 
-code(r"""
-def ls(prefix):
-    # Immediate children of a prefix, like `aws s3 ls`.
-    r = s3.list_objects_v2(Bucket=BUCKET, Prefix=prefix, Delimiter="/")
-    return [p["Prefix"] for p in r.get("CommonPrefixes", [])] + [o["Key"] for o in r.get("Contents", [])]
-
-for top in ls(f"{ROOT}/"):
-    print(top)
-    for child in ls(top)[:6]:
-        print("   ", child.removeprefix(top))
-""",
-notes="""
-Live proof that we are reading from S3. Every data type has a clinical_data folder or a manifest next to the
-files. That pattern mirrors the real AI-READI release.
-""", minutes=0.5)
-
-code(r"""
-def fetch(key):
-    # Download s3://BUCKET/key into the local cache once and return the local path.
-    dst = CACHE / key
-    if not dst.exists():
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        s3.download_file(BUCKET, key, str(dst))
-    return dst
-
-def fetch_many(keys, workers=32):
-    with ThreadPoolExecutor(workers) as pool:
-        return list(pool.map(fetch, keys))
-
-SMALL_FILES = [
-    "fundus/retinal_photography/manifest.tsv", "fundus/clinical_data/observation.csv",
-    "oct/retinal_oct/manifest.tsv", "oct/clinical_data/observation.csv",
-    "tabular/cardiac_ecg/manifest.tsv", "tabular/synthetic_wearable_activity_glucose.tsv",
-    "tabular/clinical_data/measurement.csv", "tabular/clinical_data/condition_occurrence.csv",
-]
-t0 = time.time()
-paths = dict(zip(SMALL_FILES, fetch_many([f"{ROOT}/{k}" for k in SMALL_FILES])))
-size_mb = sum(p.stat().st_size for p in paths.values()) / 1e6
-print(f"{len(paths)} metadata and tabular files, {size_mb:.0f} MB, {time.time() - t0:.0f} s")
-""",
-notes="""
-Two helpers carry the whole notebook: fetch one key into the cache, or fetch many in parallel threads.
-The parallel version matters for images: S3 is fast per connection but has per-request latency, so 32 threads
-is roughly 20 to 30 times faster than a plain loop.
-
-Expect around 10 to 30 seconds in-region for about 250 MB.
-""", minutes=0.5)
-
-# ---------------------------------------------------------------------------
-# 3. Tour
-# ---------------------------------------------------------------------------
 md(r"""
-## 3. A tour of the data types
+### 2.1 Pictures of the eye
 
-### 3.1 Retinal images: what was captured, on which device
+The study photographs the back of the eye, the **retina**, with several machines. Some take ordinary color photos,
+some use infrared light. One kind, **optical coherence tomography (OCT)**, works like an ultrasound that uses light
+instead of sound: it produces a cross-section through the layers of the retina. In this notebook we simply call
+these **scans**.
 """,
 notes="""
-Transition: we have the metadata for all 150,000 images on disk now. First question is always what was captured
-and on which machine.
+Explain the scan once, with the ultrasound comparison: a slice through the retina, layers stacked top to bottom.
+After this we avoid the abbreviation and just say scan.
+""", minutes=0.5)
+
+code(r"""
+gallery = pd.read_csv(DATA / "gallery.csv")
+KINDS = ["color photo", "infrared photo", "autofluorescence photo", "cross-section scan"]
+MACHINE_ORDER = ["Aurora", "Eidon", "Maestro2", "Triton", "Spectralis", "Cirrus"]
+
+fig, axes = plt.subplots(len(KINDS), len(MACHINE_ORDER), figsize=(13, 9))
+for i, kind in enumerate(KINDS):
+    for j, machine in enumerate(MACHINE_ORDER):
+        ax = axes[i, j]
+        no_axes(ax)
+        row = gallery[(gallery.kind == kind) & (gallery.machine == machine)]
+        if row.empty:
+            ax.text(0.5, 0.5, "not taken by\nthis machine", ha="center", va="center", color=MUTED, fontsize=9)
+        else:
+            picture = np.array(Image.open(DATA / "gallery" / row.file.iloc[0]))
+            if kind != "color photo" and picture.ndim == 3:
+                picture = picture.mean(axis=2)
+            ax.imshow(picture, cmap=None if picture.ndim == 3 else "gray")
+        if i == 0:
+            ax.set_title(f"{machine}\n({row.maker.iloc[0] if not row.empty else gallery[gallery.machine == machine].maker.iloc[0]})")
+        if j == 0:
+            ax.set_ylabel(kind.replace(" ", "\n", 1), rotation=0, ha="right", va="center", color=INK2)
+fig.suptitle("One synthetic picture for each kind of picture and machine", x=0.01, ha="left", fontweight="bold")
+plt.tight_layout()
+""",
+notes="""
+Give people ten seconds. Every picture here was generated by a computer, yet each machine's look comes through:
+the Aurora's little logo in the corner, the Eidon's text overlays, the square infrared view from the Spectralis,
+and different textures in the scans on the bottom row.
+
+Ask the room: could you tell the Triton scan from the Maestro2 scan? Both machines are made by Topcon. Hold that
+thought for Part 5.
+""", minutes=1.5)
+
+code(r"""
+scans = pd.read_csv(DATA / "scans.csv")
+MACHINES = sorted(scans.machine.unique())
+pd.crosstab(scans.machine + " (" + scans.maker + ")", scans.area, margins=True, margins_name="total")
+""",
+notes="""
+The 2,000 scans we will use: 500 from each of four machines. Each scan comes from a different synthetic person.
+
+Point out that the part of the eye differs by machine: only the Maestro2 has wide-field scans, for example. A model
+could use that shortcut on whole scans, which is one reason Part 5 makes the task harder step by step.
+""", minutes=0.5)
+
+md(r"""
+### 2.2 Measurements from many devices
+
+Each row of `participants.csv` is one synthetic person. The columns come from different sources: blood tests,
+a clinic visit, a 10-second clinic heart tracing, a continuous glucose monitor worn for days, and a wrist-worn
+activity tracker (the "watch"). One blood test appears often below: **HbA1c**, which reflects average blood sugar
+over the past three months or so; 6.5% or higher is the usual threshold for diabetes.
+""",
+notes="""
+Transition from pictures to numbers. These columns come from different devices and files, but they belong to the
+same synthetic person, which is what lets us ask whether they agree.
 """, minutes=0.25)
 
 code(r"""
-fundus = pd.read_csv(paths["fundus/retinal_photography/manifest.tsv"], sep="\t", index_col=0)
-octs = pd.read_csv(paths["oct/retinal_oct/manifest.tsv"], sep="\t", index_col=0)
-fundus["key"] = f"{ROOT}/fundus/" + fundus.filepath
-octs["key"] = f"{ROOT}/oct/" + octs.filepath
-octs["imaging"] = "OCT"
-images = pd.concat([fundus, octs], ignore_index=True)
-images["device"] = images.manufacturers_model_name
-
-IMAGING = ["Color Photography", "Infrared Reflectance", "Autofluorescence", "OCT"]
-DEVICE_ORDER = ["Aurora", "Eidon", "Maestro2", "Triton", "Spectralis", "Cirrus"]
-counts = pd.crosstab(images.imaging, images.device).reindex(index=IMAGING, columns=DEVICE_ORDER)
-counts.fillna(0).astype(int).map(lambda v: f"{v:,}" if v else "")
+participants = pd.read_csv(DATA / "participants.csv", index_col="participant_id")
+print(f"{len(participants):,} synthetic participants, {participants.shape[1]} measurements each")
+participants.head()
 """,
 notes="""
-This matrix is the design of the imaging arm: the same eye photographed by many devices. Point out that color
-photos come from four devices, infrared from four, OCT from four, and only the Eidon does autofluorescence.
-Blank cells mean that device does not capture that type.
-
-For the real data this is what makes cross-device research possible: the same people, the same day, different
-machines.
-""", minutes=1)
-
-code(r"""
-def read_pixels(path):
-    return pydicom.dcmread(path).pixel_array
-
-gallery = images.groupby(["imaging", "device"]).sample(1, random_state=SEED)
-gallery["local"] = fetch_many(gallery.key)
-
-fig, axes = plt.subplots(len(IMAGING), len(DEVICE_ORDER), figsize=(13, 9))
-for i, imaging in enumerate(IMAGING):
-    for j, device in enumerate(DEVICE_ORDER):
-        ax = axes[i, j]
-        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
-        for side in ax.spines.values():
-            side.set_visible(False)
-        row = gallery[(gallery.imaging == imaging) & (gallery.device == device)]
-        if row.empty:
-            ax.text(0.5, 0.5, "not captured", ha="center", va="center", color=MUTED, fontsize=9)
-        else:
-            px = read_pixels(row.local.iloc[0])
-            if imaging in ("Infrared Reflectance", "Autofluorescence") and px.ndim == 3:
-                px = px.mean(axis=2)
-            ax.imshow(px, cmap=None if px.ndim == 3 else "gray")
-        if i == 0:
-            ax.set_title(device)
-        if j == 0:
-            ax.set_ylabel(imaging.replace(" ", "\n"), rotation=0, ha="right", va="center", color=INK2)
-fig.suptitle("One synthetic image per imaging type and device", x=0.01, ha="left", fontweight="bold")
-plt.tight_layout()
-""",
-notes="""
-Give the audience ten seconds to look. These are all synthetic, generated by a diffusion model, yet they carry
-each device's look: the Aurora's small logo in the corner, the Eidon's text overlays and mosaic shape, the
-Triton's saturated orange, the square Spectralis infrared field, and different OCT noise textures.
-
-Ask the room: could you tell an OCT from the Triton and the Maestro2 apart? Both are Topcon. Park that thought
-for Part 5.
-
-Occasionally a sampled OCT image is almost pure noise; the generator is not perfect. That is also worth saying.
-""", minutes=2)
-
-code(r"""
-ds = pydicom.dcmread(gallery.local.iloc[0])
-for tag in ["SOPClassUID", "Manufacturer", "ManufacturerModelName", "ImageLaterality",
-            "Rows", "Columns", "SamplesPerPixel", "PhotometricInterpretation"]:
-    value = ds.get(tag)
-    print(f"{tag:28s} {getattr(value, 'name', value)}")
-""",
-notes="""
-Real DICOM headers: the device, eye, image size and the standard SOP class are all in the file itself, not just
-in the manifest. That means any DICOM tool (viewers, PACS, MONAI, pydicom) works on this data.
-
-Data-quality footnote for the technical crowd: infrared and OCT headers say MONOCHROME1 (which would mean
-"invert for display"), but the pixels are stored the normal way round. Do not blindly apply inversion.
-""", minutes=0.5, optional=True)
-
-code(r"""
-def eye_labels(path):
-    obs = pd.read_csv(path, index_col=0, low_memory=False)
-    obs["label"] = obs.observation_source_value.str.split(",").str[0].str.replace("mhoccur_", "")
-    return obs.pivot_table(index="person_id", columns="label", values="value_as_number")
-
-fundus = fundus.join(eye_labels(paths["fundus/clinical_data/observation.csv"]), on="participant_id")
-octs = octs.join(eye_labels(paths["oct/clinical_data/observation.csv"]), on="participant_id")
-prevalence = pd.concat({
-    "fundus photos": fundus.groupby("manufacturers_model_name")[["amd", "glc", "pdr"]].mean(),
-    "OCT": octs.groupby("manufacturers_model_name")[["amd", "glc", "pdr"]].mean(),
-}).mul(100).round(1)
-prevalence.columns = ["AMD %", "glaucoma %", "diabetic retinopathy %"]
-prevalence
-""",
-notes="""
-Every image comes with three disease labels in OMOP format. Prevalence is about 5 percent AMD, 8 percent glaucoma
-and 4 percent diabetic retinopathy, and it is nearly identical across devices.
-
-That flatness matters for Part 5: a device classifier cannot cheat by learning that one device sees sicker eyes.
-""", minutes=1)
+Read two or three column names aloud. HbA1c is a blood test that reflects average blood sugar over about three
+months; 6.5 percent or more is the usual threshold for diabetes. The 0/1 columns are yes/no answers to "has a
+doctor told you that you have ...".
+""", minutes=0.5)
 
 md(r"""
-### 3.2 ECG: machine measurements for every participant
+### 2.3 Do the measurements hang together?
 
-Each participant has a 12-lead WFDB record (`.hea` header plus `.dat` samples) from a Philips PageWriter TC30.
-In this synthetic release the **waveform samples are flat placeholders**: we checked 301 records and every lead
-sits at 0 mV. The synthetic content is in the machine measurements (heart rate, PR, QRS, QT, QTc) and the
-device's text interpretation, which appear in each header and in `manifest.tsv`.
-""", notes="""
-Transition from the eye to the heart. From here on we are in the tabular cohort of 10,518 synthetic
-participants, where every file shares the same participant_id.
-
-Say the waveform caveat plainly: anyone who wants to train on raw ECG signals needs the real release. The
-measurements are still useful, and Part 4 shows they line up with the wearable data.
+A **correlation** is a number between -1 and 1 that says how closely two measurements move together. Near 1: when
+one is high, the other tends to be high. Near 0: no relationship. Near -1: when one is high, the other tends to be
+low. If the synthetic data learned the real patterns, relationships we already know from medicine should show up.
+""",
+notes="""
+Correlation is the only statistics word we need here. Give a household example if the room is non-technical:
+height and shoe size are strongly correlated; height and birthday month are not.
 """, minutes=0.5)
 
 code(r"""
-ecg = pd.read_csv(paths["tabular/cardiac_ecg/manifest.tsv"], sep="\t", index_col=0).set_index("participant_id")
-
-pid = 7
-for ext in ("hea", "dat"):
-    fetch(f"{ROOT}/tabular/cardiac_ecg/{pid}/{pid}_ecg_synthetic.{ext}")
-rec = wfdb.rdrecord(str(CACHE / ROOT / "tabular/cardiac_ecg" / str(pid) / f"{pid}_ecg_synthetic"))
-header = dict(line.split(": ", 1) for line in rec.comments if ": " in line)
-
-print(f"participant {pid}: {rec.n_sig} leads ({', '.join(rec.sig_name)}), {rec.fs} Hz, {rec.sig_len / rec.fs:.0f} s")
-for key in ["device_model", "interpretation_comment_2", "comment_1_val", "comment_2_val", "comment_3_val", "comment_4_val"]:
-    print(f"  {key:26s} {header.get(key)}")
-print(f"waveform range across all 12 leads: {np.ptp(rec.p_signal):.2f} mV")
-
-INTERVALS = {"Rate": "heart rate (bpm)", "PR": "PR interval (ms)", "QRSD": "QRS duration (ms)", "QTc": "QTc (ms)"}
-fig, axes = plt.subplots(1, 4, figsize=(13, 2.8))
-for ax, (col, label) in zip(axes, INTERVALS.items()):
-    ax.hist(ecg[col], bins=40, color=SLOTS[0], edgecolor=SURFACE, linewidth=0.5)
-    ax.set_title(label, loc="left")
-    ax.set_yticks([])
-    ax.grid(False)
-fig.suptitle(f"Machine-measured ECG intervals, {len(ecg):,} synthetic participants", x=0.01, ha="left", fontweight="bold")
-plt.tight_layout()
-""",
-notes="""
-WFDB is the PhysioNet format, so the wfdb package reads a record in one line. The header carries the device, the
-machine measurements and the device's own text interpretation (for example "Normal sinus rhythm" and an
-abnormal flag). The last printed line confirms the flat waveform.
-
-The histograms show the measurements across the whole cohort; the ranges look physiological (heart rate
-roughly 40 to 105, QTc centred near 420 ms).
-
-If someone asks: the manifest has a person_id column that is constant; use participant_id.
-""", minutes=1)
-
-md(r"""
-### 3.3 Wearable and CGM summaries, clinical labs and conditions
-
-The real AI-READI release has 10 days of Dexcom glucose at 5 minute resolution and Garmin streams. The synthetic
-release condenses these into **summary features, one row per participant**. The units are not documented inside
-the file, so treat them as relative measures.
-""", notes="""
-Be upfront that the synthetic wearable table is a summary. It is still useful: it is linked to the same synthetic
-participants as the labs and ECG, which is what Part 4 needs.
-""", minutes=0.5)
-
-code(r"""
-wear = pd.read_csv(paths["tabular/synthetic_wearable_activity_glucose.tsv"], sep="\t", index_col=0).set_index("participant_id")
-
-meas = pd.read_csv(paths["tabular/clinical_data/measurement.csv"], index_col=0, low_memory=False)
-meas["var"] = meas.measurement_source_value.str.split(",").str[0]
-labs = meas.pivot_table(index="person_id", columns="var", values="value_as_number")
-
-cond = pd.read_csv(paths["tabular/clinical_data/condition_occurrence.csv"], index_col=0, low_memory=False)
-cond["var"] = cond.condition_source_value.str.split(",").str[0]
-cond_names = (cond.groupby("var").condition_source_value.first().str.split(",", n=1).str[1]
-              .str.replace(r"\s*\((Examples|elevated)[^)]*\)?$|\s*\([^)]*$", "", regex=True).str.strip())
-dx = pd.crosstab(cond.person_id, cond["var"]).clip(upper=1).reindex(labs.index, fill_value=0)
-
-print(f"wearable/CGM: {wear.shape[0]:,} participants x {wear.shape[1]} features")
-print(f"labs and vitals: {labs.shape[0]:,} participants x {labs.shape[1]} measures (OMOP measurement)")
-print(f"conditions: {dx.shape[1]} self-reported conditions (OMOP condition_occurrence)")
-wear.describe().T[["mean", "std", "min", "max"]].round(1)
-""",
-notes="""
-Three tables, one participant key. The OMOP tables are long format (one row per measurement), so we pivot to one
-row per person, which is the shape most ML code wants.
-
-Point at blood_glucose_mean and blood_glucose_std: those are the CGM features. heart_rate_mean, stress_mean,
-steps and sleep hours come from the Garmin side.
-""", minutes=1)
-
-code(r"""
-top = dx.mean().mul(100).sort_values().tail(15)
-fig, ax = plt.subplots(figsize=(9, 5))
-ax.barh([cond_names.get(v, v) for v in top.index], top.values, color=SLOTS[0], height=0.7)
-ax.set_xlabel("% of synthetic participants")
-ax.grid(axis="y", visible=False)
-ax.set_title("Most common self-reported conditions", loc="left")
-plt.tight_layout()
-""",
-notes="""
-The condition list reads like a real T2DM-risk cohort: high blood pressure, high cholesterol, elevated A1C,
-arthritis, type 2 diabetes (about 38 percent), obesity and prediabetes lead the list. That is the balanced
-recruitment design showing through.
-""", minutes=0.5, optional=True)
-
-# ---------------------------------------------------------------------------
-# 4. Correlations
-# ---------------------------------------------------------------------------
-md(r"""
-## 4. Relationships across data types
-
-Inside the tabular cohort every participant has labs, conditions, an ECG and wearable/CGM features. If the
-generator learned the real joint distribution, physiology we already know should show up **across** these files.
-That is also a quick way to judge how far to trust a synthetic dataset.
-""",
-notes="""
-Set up the logic: we will use known physiology as a test of the synthetic data. If the ECG heart rate and the
-wearable heart rate are unrelated, the generator broke the link and we should not trust subtler findings.
-""", minutes=0.5)
-
-code(r"""
-cohort = (labs.join(dx)
-              .join(wear.add_prefix("wear_"))
-              .join(ecg[["Rate", "PR", "QRSD", "QT", "QTc"]].add_prefix("ecg_")))
-
-VARS = {  # column: (label, source)
-    "import_hba1c": ("HbA1c", "lab"), "import_glucose": ("serum glucose", "lab"),
-    "import_triglycerides": ("triglycerides", "lab"), "import_hdl_cholesterol": ("HDL cholesterol", "lab"),
-    "bmi_vsorres": ("BMI", "vitals"), "waist_vsorres": ("waist", "vitals"), "bp1_sysbp_vsorres": ("systolic BP", "vitals"),
-    "mhterm_dm2": ("type 2 diabetes", "condition"), "mhoccur_hbp": ("high blood pressure", "condition"),
-    "wear_blood_glucose_mean": ("CGM mean glucose", "CGM"), "wear_blood_glucose_std": ("CGM glucose SD", "CGM"),
-    "wear_heart_rate_mean": ("mean heart rate", "wearable"), "wear_resting_heart_rate": ("resting heart rate", "wearable"),
-    "wear_stress_mean": ("stress score", "wearable"), "wear_total_steps": ("steps", "wearable"),
-    "ecg_Rate": ("heart rate", "ECG"), "ecg_QT": ("QT", "ECG"), "ecg_QTc": ("QTc", "ECG"),
-    "moca_total_score": ("MoCA total", "cognition"),
-}
-corr = cohort[list(VARS)].corr(method="spearman")
-names = [f"{label} ({src})" for label, src in VARS.values()]
-
-diverging = sns.blend_palette(["#104281", "#3987e5", "#f0efec", "#e66767", "#a61e1e"], as_cmap=True)
-annot = corr.map(lambda r: f"{r:.2f}" if abs(r) >= 0.2 and abs(r) < 0.999 else "")
-fig, ax = plt.subplots(figsize=(11, 9))
-sns.heatmap(corr, cmap=diverging, vmin=-1, vmax=1, center=0, annot=annot, fmt="", annot_kws={"size": 7},
-            xticklabels=names, yticklabels=names, linewidths=1, linecolor=SURFACE,
-            cbar_kws={"label": "Spearman correlation", "shrink": 0.6}, ax=ax)
-ax.grid(False)
-ax.set_title(f"Correlations across labs, conditions, CGM, wearable and ECG (n = {len(cohort):,})", loc="left")
-plt.tight_layout()
-""",
-notes="""
-Let the heatmap sit for a moment, then walk three blocks (numbers are shown only where the correlation is at
-least 0.2):
-
-1. Glycemia block: HbA1c, serum glucose, CGM mean glucose and type 2 diabetes all move together. The CGM file and
-   the lab file are different tables, so this link survived synthesis.
-2. Heart block: ECG heart rate against wearable mean and resting heart rate is about 0.7. Two different devices,
-   two different files, consistent physiology.
-3. ECG internal: QT shortens as heart rate rises (negative), which is textbook.
-
-Then point at the blanks: steps against BMI is near zero, and systolic blood pressure barely relates to the
-high blood pressure diagnosis. Section 4.2 makes that explicit.
-""", minutes=2)
-
-code(r"""
-checks = [  # (x, y, what physiology predicts)
-    ("ecg_Rate", "wear_heart_rate_mean", "strong positive"),
-    ("ecg_QT", "ecg_Rate", "strong negative"),
-    ("import_hba1c", "wear_blood_glucose_mean", "positive"),
-    ("import_hba1c", "mhterm_dm2", "positive"),
-    ("bmi_vsorres", "waist_vsorres", "strong positive"),
-    ("bp1_sysbp_vsorres", "mhoccur_hbp", "positive"),
-    ("wear_total_steps", "bmi_vsorres", "negative"),
-    ("import_creatinine", "mhoccur_rnl", "positive"),
+checks = [  # (measurement A, measurement B, what medicine leads us to expect)
+    ("clinic_heart_rate_bpm", "watch_heart_rate_bpm", "move together"),
+    ("hba1c_percent", "glucose_monitor_mean_mg_dl", "move together"),
+    ("hba1c_percent", "type2_diabetes", "move together"),
+    ("body_mass_index", "waist_cm", "move together"),
+    ("systolic_blood_pressure_mmhg", "high_blood_pressure", "move together"),
+    ("creatinine_mg_dl", "kidney_problems", "move together"),
+    ("watch_steps", "body_mass_index", "move in opposite directions"),
 ]
-pd.DataFrame([{
-    "pair": f"{a}  vs  {b}", "expected": e,
-    "spearman r": round(cohort[a].corr(cohort[b], method="spearman"), 2)} for a, b, e in checks
-]).set_index("pair")
+rows = []
+for a, b, expected in checks:
+    r = participants[a].corr(participants[b])
+    kept = abs(r) >= 0.2 and (r > 0) == (expected == "move together")
+    rows.append({"measurement A": a, "measurement B": b, "expected": expected,
+                 "correlation": round(r, 2), "in this synthetic data": "kept" if kept else "much weaker than expected"})
+pd.DataFrame(rows)
 """,
 notes="""
-This is the fidelity scorecard in miniature. The first five rows behave as expected. The last three (blood
-pressure vs hypertension diagnosis, steps vs BMI, creatinine vs kidney problems) are much weaker than you would
-see in real people.
+The first four rows behave as medicine predicts: clinic heart rate and watch heart rate agree even though they
+come from two different devices, and HbA1c agrees with the glucose monitor.
 
-Message: synthetic data preserved the strong, common relationships and flattened some weaker or rarer ones.
-Use it to build and debug pipelines, then confirm on the real release. Measuring this gap systematically is
-itself a research question (Part 6).
-""", minutes=1)
+The last three are much weaker than in real people: blood pressure against a diagnosis of high blood pressure,
+kidney blood test against kidney problems, steps against body mass index.
+
+So synthetic data keeps the strong, common relationships and flattens some subtler ones. It is good for learning
+and for building methods; findings still need to be confirmed on the real data.
+""", minutes=1.5)
 
 code(r"""
-t2d = cohort.assign(group=cohort.mhterm_dm2.map({0: "no T2DM", 1: "T2DM"}))
-panels = [("import_hba1c", "HbA1c (%)"), ("wear_blood_glucose_mean", "CGM mean glucose"), ("bmi_vsorres", "BMI")]
-fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-for ax, (col, label) in zip(axes, panels):
-    sns.boxplot(data=t2d, x="group", y=col, hue="group", order=["no T2DM", "T2DM"],
-                palette={"no T2DM": SLOTS[0], "T2DM": SLOTS[1]}, showfliers=False, width=0.5, ax=ax, legend=False)
-    means = t2d.groupby("group")[col].mean()
-    ax.set_title(f"{label}: {means['no T2DM']:.1f} vs {means['T2DM']:.1f}", loc="left")
-    ax.set_xlabel(""); ax.set_ylabel(label)
+groups = participants.assign(group=participants.type2_diabetes.map({0: "no type 2 diabetes", 1: "type 2 diabetes"}))
+panels = [("hba1c_percent", "HbA1c (%)"), ("glucose_monitor_mean_mg_dl", "glucose monitor average (mg/dL)"),
+          ("body_mass_index", "body mass index")]
+fig, axes = plt.subplots(1, 3, figsize=(13, 4))
+for ax, (column, label) in zip(axes, panels):
+    sns.boxplot(data=groups, x="group", y=column, hue="group", order=["no type 2 diabetes", "type 2 diabetes"],
+                palette={"no type 2 diabetes": SLOTS[0], "type 2 diabetes": SLOTS[1]},
+                showfliers=False, width=0.5, ax=ax, legend=False)
+    means = groups.groupby("group")[column].mean()
+    ax.set_title(f"{label}\naverage {means.iloc[0]:.1f} vs {means.iloc[1]:.1f}", loc="left")
+    ax.set_xlabel(""); ax.set_ylabel("")
 plt.tight_layout()
 """,
 notes="""
-Same story from the diagnosis side. People who report type 2 diabetes have higher HbA1c (about 6.4 vs 5.5
-percent), higher CGM mean glucose and higher BMI. Three different tables, one consistent picture.
+How to read a box plot: the box holds the middle half of the people, the line inside is the middle person, the
+whiskers show the typical range.
 
-Good moment to ask the room what they would do with a real version of this: for example, which CGM patterns
-separate insulin users from people controlled by lifestyle alone.
+People who report type 2 diabetes have higher HbA1c, higher glucose monitor readings and higher body mass index.
+The three measurements come from different sources and agree with each other.
 """, minutes=1)
-
-code(r"""
-fig, ax = plt.subplots(figsize=(5.5, 5))
-hb = ax.hexbin(cohort.ecg_Rate, cohort.wear_heart_rate_mean, gridsize=45, mincnt=1,
-               cmap=sns.blend_palette(["#cde2fb", "#3987e5", "#0d366b"], as_cmap=True))
-r = cohort.ecg_Rate.corr(cohort.wear_heart_rate_mean)
-ax.set_xlabel("ECG heart rate, clinic (bpm)")
-ax.set_ylabel("wearable mean heart rate (bpm)")
-ax.set_title(f"Two devices, one heart: r = {r:.2f}", loc="left")
-fig.colorbar(hb, ax=ax, label="participants")
-plt.tight_layout()
-""",
-notes="""
-One scatter to make the cross-device link concrete: a 10 second clinic ECG against days of wrist-worn heart rate.
-Optional if short on time.
-""", minutes=0.5, optional=True)
 
 # ---------------------------------------------------------------------------
-# 5. Device challenge
+# 3. Machine learning from first principles
 # ---------------------------------------------------------------------------
 md(r"""
-## 5. Challenge: which device took this scan?
+## 3. Machine learning from first principles
 
-Every imaging device leaves a fingerprint: optics, sensor noise, compression, post-processing. In a famous chest
-X-ray study, a network could tell *which hospital* an image came from almost perfectly
-([Zech et al., PLOS Medicine 2018](https://doi.org/10.1371/journal.pmed.1002683)). Fingerprints like this are how
-models learn shortcuts and why a model trained on one OCT device often underperforms on another.
+Almost all of machine learning comes down to three ideas:
 
-Last year's AI-READI demo showed that a classifier can name the device from grayscale random pieces of retinal
-images that people cannot tell apart. We repeat it here on **synthetic** OCT, which asks an extra question:
-**did the diffusion model learn each device's fingerprint too?**
+1. **A model is a rule with adjustable numbers.** Think of the adjustable numbers as knobs. (The technical name is
+   *parameters*.)
+2. **An error function turns "how wrong is the rule?" into one number**, using examples where we know the right
+   answer.
+3. **Learning means turning the knobs to make that number smaller**, a little at a time, automatically.
 
-We make the task harder step by step:
+We will see all three on a question with one input and one answer. Part 5 uses exactly the same three ideas on
+pictures.
+
+**The question.** A wrist-worn tracker records heart rate for days, which is slow and costly to collect. A clinic
+heart tracing takes 10 seconds. Can we predict someone's average watch heart rate from their clinic heart rate?
+""",
+notes="""
+This section matters most. Write the three ideas on a whiteboard if you have one and keep pointing back to
+them: rule with knobs, error score, turn the knobs downhill.
+
+The question is deliberately simple so the ideas are the only new thing.
+""", minutes=1.5)
+
+code(r"""
+clinic = participants.clinic_heart_rate_bpm.to_numpy()
+watch = participants.watch_heart_rate_bpm.to_numpy()
+
+def predict(clinic_rate, slope, level):
+    # The rule: start from `level` for a typical clinic rate of 65,
+    # and add `slope` watch beats for every clinic beat above 65.
+    return level + slope * (clinic_rate - 65)
+
+shown = participants.sample(1500, random_state=SEED)
+line = np.linspace(clinic.min(), clinic.max(), 2)
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.scatter(shown.clinic_heart_rate_bpm, shown.watch_heart_rate_bpm, s=10, alpha=0.35, color=SLOTS[0], linewidths=0)
+ax.plot(line, predict(line, slope=1.0, level=65), color=INK, linewidth=2)
+ax.text(line[-1], predict(line[-1], 1.0, 65), "  first guess:\n  watch = clinic", va="center", color=INK)
+ax.set_xlabel("clinic heart rate (beats per minute)")
+ax.set_ylabel("average watch heart rate (beats per minute)")
+ax.set_title("Each dot is one synthetic person (1,500 of 10,518 shown)", loc="left")
+plt.tight_layout()
+""",
+notes="""
+The rule has two knobs. "Level" is what we predict for someone whose clinic heart rate is 65, a typical value.
+"Slope" is how many watch beats to add for each clinic beat above 65.
+
+First guess, slope 1 and level 65, simply says the watch shows the same as the clinic. Ask the room whether that
+line looks right. It runs below most of the dots: the watch average is higher, because it includes activity.
+""", minutes=1.5)
+
+md(r"""
+### 3.1 The error function, worked by hand
+
+For one person, the **error** is the prediction minus the truth. We square it, so that missing high and missing low
+both count, and a big miss counts much more than a small one. Averaging over everyone gives the
+**mean squared error**: one number for how wrong the rule is. Smaller is better; zero would be perfect.
+""",
+notes="""
+Squaring is the only design choice here. Without it, misses above and below would cancel out and a terrible rule
+could score zero.
+""", minutes=0.5)
+
+code(r"""
+def mean_squared_error(prediction, truth):
+    return np.mean((prediction - truth) ** 2)
+
+five = participants.sample(5, random_state=7)
+worked = pd.DataFrame({"clinic heart rate": five.clinic_heart_rate_bpm,
+                       "watch heart rate (truth)": five.watch_heart_rate_bpm})
+worked["prediction (first guess)"] = predict(worked["clinic heart rate"], slope=1.0, level=65)
+worked["error"] = worked["prediction (first guess)"] - worked["watch heart rate (truth)"]
+worked["error squared"] = worked["error"] ** 2
+display(worked.round(1))
+print(f"average of these five squared errors: {worked['error squared'].mean():.1f}")
+print(f"mean squared error over all {len(clinic):,} people: "
+      f"{mean_squared_error(predict(clinic, slope=1.0, level=65), watch):.1f}")
+""",
+notes="""
+Walk through one row slowly: prediction, minus the truth, gives the error; square it. Then the average of the five.
+Then the same calculation over all 10,518 people, which the computer does instantly.
+
+The square root of the mean squared error is roughly the typical miss in beats per minute, if anyone asks.
+""", minutes=2)
+
+code(r"""
+slopes = np.linspace(0, 1.4, 57)
+levels = np.linspace(60, 90, 61)
+landscape = np.array([[mean_squared_error(predict(clinic, s, l), watch) for s in slopes] for l in levels])
+
+guesses = pd.DataFrame([(1.0, 65), (0.5, 70), (0.6, 75), (1.2, 85)], columns=["slope", "level"])
+guesses["mean squared error"] = [mean_squared_error(predict(clinic, s, l), watch).round(1)
+                                 for s, l in zip(guesses.slope, guesses.level)]
+display(guesses)
+
+fig, ax = plt.subplots(figsize=(7, 5))
+filled = ax.contourf(slopes, levels, np.log10(landscape), levels=20, cmap=BLUES.reversed())
+fig.colorbar(filled, ax=ax, label="error (log scale; darker is better)")
+ax.scatter(guesses.slope, guesses.level, color=INK, s=30, zorder=3)
+for s, l in zip(guesses.slope, guesses.level):
+    ax.annotate(f"({s}, {l})", (s, l), textcoords="offset points", xytext=(6, 6), color=INK)
+ax.set_xlabel("slope knob"); ax.set_ylabel("level knob"); ax.grid(False)
+ax.set_title("Every knob setting has an error: a landscape with one lowest point", loc="left")
+plt.tight_layout()
+""",
+notes="""
+Four guesses, four error scores: some settings are clearly better. Then the landscape: every point is one setting
+of the two knobs, shaded by its error. Darker is better. Learning means finding the darkest spot.
+
+With two knobs we can draw the whole landscape. The picture model in Part 5 has about 94,000 knobs, so nobody can
+draw its landscape; we need a way to walk downhill without seeing it.
+""", minutes=1.5)
+
+md(r"""
+### 3.2 Learning means walking downhill
+
+Instead of trying settings at random, the computer asks, for each knob: *if I nudge this knob up a little, does the
+error go up or down, and by how much?* That direction is called the **gradient**. It then takes a small step in the
+downhill direction and asks again. Repeating this is called **gradient descent**. It is how nearly every modern
+model learns, including the picture model later on.
+""",
+notes="""
+An analogy: standing on a hillside in fog. You cannot see the valley, but you can feel which way the
+ground slopes under your feet. Take a small step downhill, feel again, repeat.
+""", minutes=1)
+
+code(r"""
+slope, level, step_size = 1.0, 65.0, 0.004       # start from the first guess
+path = []
+for step in range(600):
+    error = predict(clinic, slope, level) - watch
+    path.append((slope, level, np.mean(error ** 2)))
+    # which way is downhill for each knob (how the mean squared error changes when the knob is nudged)
+    slope_gradient = 2 * np.mean(error * (clinic - 65))
+    level_gradient = 2 * np.mean(error)
+    slope -= step_size * slope_gradient
+    level -= step_size * level_gradient
+path = np.array(path)
+print(f"learned rule: watch = {level:.1f} + {slope:.2f} x (clinic - 65)   error {path[-1, 2]:.1f} "
+      f"(first guess {path[0, 2]:.1f})")
+
+fig, (left, right) = plt.subplots(1, 2, figsize=(13, 4.5))
+left.contourf(slopes, levels, np.log10(landscape), levels=20, cmap=BLUES.reversed())
+left.plot(path[:, 0], path[:, 1], color=INK, linewidth=1.5)
+left.scatter(*path[0, :2], color=INK, s=30, zorder=3); left.annotate("start", path[0, :2], xytext=(6, -12), textcoords="offset points")
+left.scatter(*path[-1, :2], color=SLOTS[1], s=40, zorder=3); left.annotate("learned", path[-1, :2], xytext=(6, 6), textcoords="offset points")
+left.set_xlabel("slope knob"); left.set_ylabel("level knob"); left.grid(False)
+left.set_title("The path the knobs took", loc="left")
+right.plot(path[:, 2], color=SLOTS[0])
+right.set_xlabel("step"); right.set_ylabel("mean squared error")
+right.set_title("Error after each step", loc="left")
+plt.tight_layout()
+""",
+notes="""
+This is a few lines of plain arithmetic, with no machine learning library. The left panel shows the knobs walking from the first
+guess to the valley floor; the right panel shows the error dropping fast, then leveling off once there is little
+left to gain.
+
+The learned slope is below 1: someone with a fast clinic reading tends to have a less extreme watch average.
+""", minutes=2)
+
+md(r"""
+### 3.3 When the answer is a category
+
+In Part 5 the answer is not a number but one of four machines. The model then gives a **probability** for each
+machine, adding up to 100%. The error for one example is based on the probability the model gave to the *right*
+machine: confident and right is a small error, confident and wrong is a large one. The usual formula is
+minus the logarithm of that probability (called *cross-entropy*):
+""",
+notes="""
+Only the idea matters, not the formula: the error is small when the model puts a lot of probability on the right
+answer, and grows quickly when it does not. A blind guess among four machines scores about 1.39.
+""", minutes=0.5)
+
+code(r"""
+probability = np.array([0.95, 0.70, 0.25, 0.05])
+pd.DataFrame({
+    "probability given to the right machine": probability,
+    "error = -log(probability)": -np.log(probability),
+    "meaning": ["confident and right", "fairly sure and right", "a blind guess among four", "confident and wrong"],
+}).round(2)
+""",
+notes="""
+After this, nothing about learning changes: compute the error, work out the downhill direction for every knob,
+take a small step, repeat. A picture model just has many more knobs.
+""", minutes=0.5)
+
+# ---------------------------------------------------------------------------
+# 4. Pictures and the CNN
+# ---------------------------------------------------------------------------
+md(r"""
+## 4. From numbers to pictures: why a convolutional neural network
+
+### 4.1 A picture is a grid of numbers
+
+To a computer, a grayscale picture is a grid of numbers, one per pixel, from 0 (black) to 255 (white). Our scans
+are 256 x 256 pixels, so each is 65,536 numbers.
+""",
+notes="""
+Everything from here on rests on this one fact. A picture is just numbers, so the three ideas from Part 3 apply.
+""", minutes=0.5)
+
+code(r"""
+X = np.stack([np.array(Image.open(DATA / "scans" / name)) for name in scans.file])
+labels = scans.machine.map({m: i for i, m in enumerate(MACHINES)}).to_numpy()
+train_idx, test_idx = train_test_split(np.arange(len(X)), test_size=0.25, stratify=labels, random_state=SEED)
+print(f"{len(X):,} scans of {X.shape[1]} x {X.shape[2]} pixels; "
+      f"{len(train_idx):,} for learning, {len(test_idx):,} held back for testing")
+
+example = X[test_idx[0]]
+top, left_ = 120, 100
+fig, (a, b) = plt.subplots(1, 2, figsize=(12, 5), gridspec_kw={"width_ratios": [1, 1.1]})
+a.imshow(example, cmap="gray"); no_axes(a)
+a.add_patch(plt.Rectangle((left_, top), 12, 12, fill=False, edgecolor=SLOTS[1], linewidth=2))
+a.set_title("A scan (the orange square is zoomed on the right)", loc="left")
+sns.heatmap(example[top:top + 12, left_:left_ + 12], annot=True, fmt="d", cmap="gray", vmin=0, vmax=255,
+            cbar=False, annot_kws={"size": 7}, ax=b)
+no_axes(b); b.set_title("The same 12 x 12 pixels, as the numbers the computer sees", loc="left")
+plt.tight_layout()
+""",
+notes="""
+The scans load from the data folder in a couple of seconds. We set aside a quarter of them for testing: the model
+never learns from those, so they tell us honestly how it does on scans it has not seen.
+
+On the right, the same small square as numbers. That is all the computer ever gets.
+""", minutes=1)
+
+md(r"""
+### 4.2 Simple idea 1: compare with the average picture
+
+Average all learning scans from each machine into one typical picture. To label a new scan, pick the machine whose
+typical picture is closest to it, pixel by pixel. This works when every picture is laid out the same way, because
+then each pixel position means the same thing in every scan.
+""",
+notes="""
+This is the most natural first idea, and it is a real method (nearest average). Its weakness is about to become
+obvious.
+""", minutes=0.5)
+
+code(r"""
+whole = F.avg_pool2d(torch.from_numpy(X[train_idx])[:, None].float() / 255, 4)[:, 0].numpy()   # shrink to 64 x 64
+rng = np.random.default_rng(SEED)
+corners = rng.integers(0, 193, size=(len(train_idx), 2))
+pieces = np.stack([X[i, r:r + 64, c:c + 64] for i, (r, c) in zip(train_idx, corners)]) / 255
+
+fig, axes = plt.subplots(2, 4, figsize=(11, 6))
+for k, machine in enumerate(MACHINES):
+    mine = labels[train_idx] == k
+    axes[0, k].imshow(whole[mine].mean(0), cmap="gray", vmin=0, vmax=0.6)
+    axes[1, k].imshow(pieces[mine].mean(0), cmap="gray", vmin=0, vmax=0.6)
+    axes[0, k].set_title(machine)
+    for ax in axes[:, k]:
+        no_axes(ax)
+axes[0, 0].set_ylabel("whole scans", rotation=0, ha="right", va="center", color=INK2)
+axes[1, 0].set_ylabel("random pieces", rotation=0, ha="right", va="center", color=INK2)
+fig.suptitle("The average picture for each machine", x=0.01, ha="left", fontweight="bold")
+plt.tight_layout()
+""",
+notes="""
+Top row: averaging whole scans gives four clearly different typical pictures, so this simple rule will do well on
+whole scans.
+
+Bottom row: average random pieces instead, and every machine's typical piece is the same gray blur. The clue is no
+longer in a fixed place, so the average washes it out. This rule will collapse on pieces.
+""", minutes=1)
+
+md(r"""
+### 4.3 Simple idea 2: summarize first, then decide
+
+Describe each picture with a few summary numbers, such as how many pixels are dark, medium or bright and how much
+neighboring pixels differ (how grainy it looks), then fit a simple scoring rule on those numbers. Position no
+longer matters, which helps. But the arrangement of pixels, the very thing that makes up a texture, is thrown away.
+
+### 4.4 The idea behind a convolutional neural network
+
+A **filter** is a small grid of numbers, for example 3 x 3. Slide it across the picture. At each position, multiply
+the 9 pixels under it by the 9 filter numbers and add the results. Writing each sum into a new picture gives a map
+that is bright wherever the pattern in the filter appears. This sliding multiply-and-add is called a
+**convolution**. Below are two filters made by hand.
+""",
+notes="""
+Idea 2 is what a careful analyst would try next, and it does better than idea 1 on pieces. Its blind spot is that
+it ignores how pixels are arranged.
+
+Then the main idea of this part: a filter is a tiny stencil of numbers you slide over the picture. Multiply and
+add at every position. That is all a convolution is.
+""", minutes=1)
+
+code(r"""
+def convolve(picture, filt):
+    # Slide a 3 x 3 filter over the picture: multiply the 9 pixels under it by the 9 filter numbers and add.
+    rows, cols = picture.shape[0] - 2, picture.shape[1] - 2
+    out = np.zeros((rows, cols))
+    for dy in range(3):
+        for dx in range(3):
+            out += filt[dy, dx] * picture[dy:dy + rows, dx:dx + cols]
+    return out
+
+edge = np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]])      # dark above, bright below
+grain = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])  # a pixel that differs from its neighbors
+
+picture = X[test_idx[0]].astype(float)
+fig, axes = plt.subplots(1, 5, figsize=(15, 3.6), gridspec_kw={"width_ratios": [3, 1, 3, 1, 3]})
+axes[0].imshow(picture, cmap="gray"); axes[0].set_title("the scan", loc="left")
+for ax, filt, name, where in [(axes[1], edge, "edge filter", axes[2]), (axes[3], grain, "grain filter", axes[4])]:
+    sns.heatmap(filt, annot=True, fmt="d", cmap="RdBu_r", center=0, cbar=False, square=True, ax=ax)
+    ax.set_title(name, loc="left")
+    where.imshow(np.abs(convolve(picture, filt)), cmap="gray")
+    where.set_title(f"after the {name}", loc="left")
+for ax in axes:
+    no_axes(ax)
+plt.tight_layout()
+""",
+notes="""
+The edge filter subtracts the row above from the row below, so it lights up wherever the picture changes from dark
+to bright going down: exactly the boundaries between retinal layers. Those ridge-like edges are easy for a person
+to learn to spot, which is why Part 5 builds a level without them.
+
+The grain filter compares each pixel with its eight neighbors. On smooth areas the result is near zero; on speckle
+it lights up. That fine grain turns out to be the machine's fingerprint.
+""", minutes=1.5)
+
+md(r"""
+### 4.5 What a convolutional neural network adds
+
+A **convolutional neural network (CNN)** is built entirely from this idea:
+
+* **Many filters, learned instead of hand-made.** The numbers inside every filter are knobs, tuned with the
+  error-and-downhill loop from Part 3.
+* **Layers.** The first layer's filters find tiny patterns such as edges and grain. The next layer slides filters
+  over those results and finds combinations of patterns, and so on.
+* **Shrinking.** Between layers, each 2 x 2 block keeps only its strongest value, so later layers see a wider area.
+* **A final vote.** The last step turns everything into four scores, one per machine, and then probabilities.
+
+Why a CNN fits this job better than the simple ideas:
+
+* The same filter is used at every position, so a clue is found wherever it appears in the picture. The average
+  picture needs the clue in the same place every time.
+* It looks at neighboring pixels together, which is exactly what a texture is. The summary numbers throw that away.
+* It needs relatively few knobs. A 3 x 3 filter has 9, whether the picture is small or large.
+""",
+notes="""
+Spend a moment on the three reasons; they answer "why not something simpler?": finds the clue anywhere,
+looks at neighbors together, few knobs. Part 5 will test the claim directly by running the two simple ideas and
+the CNN side by side.
+""", minutes=2)
+
+code(r"""
+def build_cnn(n_machines=4):
+    layers, channels = [], [1, 32, 64, 128]
+    for c_in, c_out in zip(channels[:-1], channels[1:]):
+        layers += [nn.Conv2d(c_in, c_out, kernel_size=3, padding=1),   # c_out learned 3 x 3 filters
+                   nn.BatchNorm2d(c_out),                              # keeps the numbers in a steady range
+                   nn.ReLU(),                                          # keeps only positive responses
+                   nn.MaxPool2d(2)]                                    # shrink: keep the strongest of each 2 x 2
+    return nn.Sequential(*layers, nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Linear(channels[-1], n_machines))
+
+cnn = build_cnn()
+parts = [("filter layer 1", cnn[0:2], "32 filters looking at the picture"),
+         ("filter layer 2", cnn[4:6], "64 filters looking at layer 1's maps"),
+         ("filter layer 3", cnn[8:10], "128 filters looking at layer 2's maps"),
+         ("final vote", cnn[-1], "turns 128 summaries into 4 machine scores")]
+knobs = pd.DataFrame([{"step": name, "what it does": what, "knobs": sum(p.numel() for p in part.parameters())}
+                      for name, part, what in parts]).set_index("step")
+print(f"total knobs: {knobs.knobs.sum():,}")
+knobs
+""",
+notes="""
+The whole network is about 94,000 knobs. That sounds like a lot, but modern image models have millions to
+billions. The small size is deliberate: it runs on a laptop in a few minutes and still beats the simple ideas.
+""", minutes=1)
+
+# ---------------------------------------------------------------------------
+# 5. Challenge
+# ---------------------------------------------------------------------------
+md(r"""
+## 5. The challenge: which machine took this scan?
+
+Every imaging machine leaves a fingerprint: its optics, its sensor, its processing. Fingerprints matter because a
+model trained to spot disease can quietly learn to spot the *machine* instead, for example when one clinic with
+sicker patients uses one machine. In a well-known study, a model could tell which *hospital* a chest X-ray came
+from almost perfectly ([Zech et al., 2018](https://doi.org/10.1371/journal.pmed.1002683)).
+
+Last year's AI-READI demo showed that a model can name the machine from small grayscale pieces of retina pictures
+that people cannot tell apart. We repeat it on synthetic scans, which adds one more question: **did the program that
+generated the data also reproduce each machine's fingerprint?**
+
+We make the task harder step by step. With four machines, guessing gets 25% right.
 
 | Level | What the model sees |
 |---|---|
-| `whole` | the full B-scan, shrunk to 64 x 64 pixels |
-| `crop64` | a random 64 x 64 piece at full resolution |
-| `crop64n` | the same piece with brightness and contrast removed |
-| `crop32n` | a random 32 x 32 piece, brightness and contrast removed |
-
-Four devices, so guessing gets 25%.
+| 1. Whole scan | the full scan, shrunk to 64 x 64 pixels |
+| 2. Random piece | a random 64 x 64 piece at full detail |
+| 3. Piece, brightness evened out | the same, with overall brightness and contrast made identical |
+| 4. Pure texture | a piece with no visible shapes at all: no layer edges, streaks or dark bands |
 """,
 notes="""
-This is the main event. Credit Aaron Lee's demo from last year: people were shown grayscale random crops of
-retinal images and asked to name the device; they could not, the classifier could.
+Credit Aaron Lee's demo from last year: people were shown grayscale pieces of retina pictures and asked to name
+the machine; they could not, the model could.
 
-Why it matters: if a model can tell the device from a tiny patch, then any disease model trained
-on images can silently use the device as a proxy (for example if one clinic with sicker patients uses one
-machine). That is the domain shift problem that holds back deployment.
+Why it matters: if the machine can be read from a tiny piece, every disease model trained on these
+pictures can silently lean on the machine as a shortcut. That is the main reason medical models fail when moved to
+a new clinic.
 
-Twist for the synthetic version: the generator was told the device for every image. If a classifier recovers the
-device, the generator reproduced the fingerprint, which is a nontrivial test of how realistic the images are.
+Level 4 is new this year. After brightness is evened out (level 3), some pieces still show ridge-like layer edges
+that a person can learn to use. Level 4 keeps only pieces with no visible shape at all.
 """, minutes=2)
 
-code(r"""
-MODALITY = "OCT"        # try "Color Photography" or "Infrared Reflectance" afterwards
-N_PER_DEVICE = 1000     # images per device; 1,000 is about 65 MB for OCT
+md(r"""
+### 5.1 Finding pieces with no visible shapes
 
-pool = images[images.imaging == MODALITY]
-subset = pool.groupby("device").sample(N_PER_DEVICE, random_state=SEED).reset_index(drop=True)
-t0 = time.time()
-subset["local"] = fetch_many(subset.key)
+To build level 4 we need a way to say "this piece shows something a person could spot". Two simple checks:
 
-def load_gray(path):
-    px = read_pixels(path)
-    if px.ndim == 3:  # RGB photo: convert to grayscale, as in the original demo
-        px = px[..., :3].astype(np.float32) @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
-    return px.astype(np.uint8)
+1. **Brightness changes.** Average each row, each column and each 8 x 8 block, and see how much those averages
+   vary compared with the pixel-to-pixel grain. On pure grain they barely move (a score of about 0.15 to 0.25); a
+   layer edge, a streak or a dark band makes them swing (0.5 or more). We keep pieces below 0.3.
+2. **Grain changes.** Compare the roughest row, column or 8 x 8 block with the smoothest one. In even grain the
+   roughest is less than about twice the smoothest; a flat band along an edge or a bright speck in a corner pushes
+   that far higher. We keep pieces below 2.5.
 
-with ThreadPoolExecutor(16) as pool_:
-    X = np.stack(list(pool_.map(load_gray, subset.local)))
-DEVICES = sorted(subset.device.unique())
-y = subset.device.map({d: i for i, d in enumerate(DEVICES)}).to_numpy()
-print(f"{len(X):,} {MODALITY} images {X.shape[1:]} from {DEVICES} in {time.time() - t0:.0f} s")
+We also skip nearly blank pieces such as pure black background, since a blank square would itself be a giveaway.
+
+Each piece also starts at a slightly random position. The program that generated these synthetic images leaves a
+faint pattern that repeats every 8 pixels; if every piece started on the same grid, that pattern would line up and
+even the average picture could use it. Random starts close that shortcut.
 """,
 notes="""
-Pulls a balanced sample, 1,000 B-scans per device, directly from S3 with 32 threads. In-region this takes
-well under a minute. Color photos get converted to grayscale, which was the original trick for removing the
-obvious color cues.
+Level 4 needs pieces where a person has nothing to go on. Both checks are simple and visible in the next cell.
 
-Every image belongs to a different synthetic participant, so a random train/test split has no patient leakage.
+The second check matters because many Maestro2 scans have a flat gray band along their top edge, and pieces touching it passed the first check (same average brightness, just no grain).
+A person could learn "gray band means Maestro2". The grain check removes those pieces, along with dark pieces that
+have a bright speck in a corner.
+
+The random starting position closes a shortcut worth telling the room about. With pieces lined up on a grid, even the
+average-picture rule reached about 60% on pure texture, because the image generator leaves a faint pattern that
+repeats every 8 pixels. Shifting each piece by a random few pixels dropped that rule below 40%, while the CNN
+stayed close to 90%. The general lesson: when a simple method does suspiciously well, look for a shortcut.
 """, minutes=1)
 
 code(r"""
-import torch, torch.nn as nn, torch.nn.functional as F
-from sklearn.model_selection import train_test_split
+GRID = [(r, c) for r in range(0, 185, 16) for c in range(0, 185, 16)]   # 144 piece positions per scan
 
-DEV = "cuda" if torch.cuda.is_available() else "cpu"
-torch.set_num_threads(os.cpu_count())
-Xt = torch.from_numpy(X)                                 # uint8; converted to float per batch to save memory
-train_idx, test_idx = train_test_split(np.arange(len(y)), test_size=0.25, stratify=y, random_state=SEED)
-LEVELS = ["whole", "crop64", "crop64n", "crop32n"]
+def shape_score(pieces):
+    # How much brightness swings across rows, columns and 8 x 8 blocks, relative to the pixel-to-pixel grain.
+    z = (pieces - pieces.mean((1, 2), keepdims=True)) / (pieces.std((1, 2), keepdims=True) + 1e-6)
+    rows = z.mean(2).std(1)
+    columns = z.mean(1).std(1)
+    blocks = z.reshape(-1, 8, 8, 8, 8).mean((2, 4)).std((1, 2))
+    return np.maximum(np.maximum(rows, columns), blocks)
 
-def make_view(idx, level, seed):
-    # One batch of model inputs for a difficulty level.
-    g = torch.Generator().manual_seed(seed)
-    batch = Xt[idx]
-    if level == "whole":                                  # full scan, 256 -> 64 pixels
-        return torch.cat([F.avg_pool2d(c[:, None].float() / 255, 4) for c in batch.split(500)])
-    size = 32 if level == "crop32n" else 64
-    top = torch.randint(0, 257 - size, (len(idx),), generator=g)
-    left = torch.randint(0, 257 - size, (len(idx),), generator=g)
-    crops = torch.stack([im[t:t + size, l:l + size] for im, t, l in zip(batch, top, left)])[:, None].float() / 255
-    if level.endswith("n"):                              # remove brightness and contrast cues
-        crops = (crops - crops.mean((2, 3), keepdim=True)) / (crops.std((2, 3), keepdim=True) + 1e-6)
-    return crops
+def unevenness(pieces):
+    # The roughest row, column or 8 x 8 block divided by the smoothest one. Even grain: about 1.5 to 2.
+    def spread(roughness):
+        return roughness.max(1) / (roughness.min(1) + 1e-6)
+    blocks = pieces.reshape(-1, 8, 8, 8, 8).std((2, 4)).reshape(len(pieces), -1)
+    return np.maximum(np.maximum(spread(pieces.std(2)), spread(pieces.std(1))), spread(blocks))
 
-fig, axes = plt.subplots(len(DEVICES), len(LEVELS), figsize=(9, 9))
-example = [int(train_idx[y[train_idx] == k][0]) for k in range(len(DEVICES))]
-for i, idx in enumerate(example):
-    for j, level in enumerate(LEVELS):
-        ax = axes[i, j]
-        ax.imshow(make_view([idx], level, seed=j)[0, 0], cmap="gray")
-        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
-        if i == 0: ax.set_title(level)
-        if j == 0: ax.set_ylabel(DEVICES[i], rotation=0, ha="right", va="center")
-plt.suptitle("What each level shows: one example per device", x=0.01, ha="left", fontweight="bold")
+t0 = time.time()
+rng = np.random.default_rng(SEED)
+plain_spots, examples = [], []
+for i in range(len(X)):
+    scan = X[i].astype(np.float32)
+    corners = [(r + rng.integers(0, 8), c + rng.integers(0, 8)) for r, c in GRID]   # random start, 0 to 7 pixels
+    pieces = np.stack([scan[r:r + 64, c:c + 64] for r, c in corners])
+    shape, uneven = shape_score(pieces), unevenness(pieces)
+    keep = (shape < 0.3) & (uneven < 2.5) & (pieces.std((1, 2)) >= 4)
+    plain_spots.append([corner for corner, k in zip(corners, keep) if k])
+    if i < 300:
+        examples += [(pieces[j], labels[i], shape[j], uneven[j]) for j in range(0, len(corners), 7)]
+has_plain = np.array([len(s) > 0 for s in plain_spots])
+print(f"scored {len(X) * len(GRID):,} pieces in {time.time() - t0:.0f} s")
+print("scans with at least one shapeless piece:",
+      {m: f"{has_plain[labels == k].mean():.0%}" for k, m in enumerate(MACHINES)})
+
+usable = [e for e in examples if e[0].std() >= 4]
+kept = [e for k in range(len(MACHINES)) for e in [x for x in usable if x[1] == k and x[2] < 0.3 and x[3] < 2.5][:2]]
+edges = [e for e in usable if e[2] >= 0.3][:4]
+bands = [e for e in usable if e[2] < 0.3 and e[3] >= 2.5][:4]
+fig, axes = plt.subplots(2, 8, figsize=(14, 4.6))
+for ax, (piece, k, shape, uneven) in zip(axes[0], kept):
+    ax.imshow((piece - piece.mean()) / (piece.std() + 1e-6), cmap="gray"); no_axes(ax)
+    ax.set_title(f"kept ({MACHINES[k]})", fontsize=9)
+for ax, (piece, k, shape, uneven), reason in zip(axes[1], edges + bands, ["brightness"] * 4 + ["uneven grain"] * 4):
+    ax.imshow((piece - piece.mean()) / (piece.std() + 1e-6), cmap="gray"); no_axes(ax)
+    ax.set_title(f"out: {reason}", fontsize=9)
+fig.suptitle("Top: pieces kept for level 4. Bottom: pieces left out, and why",
+             x=0.01, ha="left", fontweight="bold")
 plt.tight_layout()
 """,
 notes="""
-Walk left to right. With the whole scan you can see layer shape and background. A 64 pixel crop keeps some
-texture. Once brightness and contrast are removed, most people are guessing. At 32 pixels there is almost
-nothing a human can use.
+Top row: kept pieces, two per machine, all look like television static. Bottom row: pieces left out by the
+brightness check (edges, bands, dark areas) and by the grain check (flat strips along an edge, bright specks).
+
+If someone notices that the Cirrus grain looks stretched sideways, they are right: that is genuine texture, and
+exactly the kind of cue the CNN combines many of.
+
+Not every scan has such a piece: every Cirrus scan does, but only about a third of the Spectralis and Triton scans
+do, because their background fades smoothly from top to bottom. For level 4 we use only scans that have one, with
+the same number from each machine so guessing still gets 25%.
+""", minutes=1.5)
+
+code(r"""
+LEVELS = {"whole": "1. whole scan", "piece": "2. random piece",
+          "even": "3. brightness evened out", "texture": "4. pure texture"}
+Xt = torch.from_numpy(X)
+
+def make_view(idx, level, seed):
+    # What the model gets to see at each level, for the scans in idx.
+    rng = np.random.default_rng(seed)
+    batch = Xt[idx]
+    if level == "whole":
+        return torch.cat([F.avg_pool2d(b[:, None].float() / 255, 4) for b in batch.split(500)])
+    if level == "texture":
+        corners = [plain_spots[i][rng.integers(len(plain_spots[i]))] for i in idx]
+    else:
+        corners = rng.integers(0, 193, size=(len(idx), 2))
+    pieces = torch.stack([im[r:r + 64, c:c + 64] for im, (r, c) in zip(batch, corners)])[:, None].float() / 255
+    if level in ("even", "texture"):
+        pieces = (pieces - pieces.mean((2, 3), keepdim=True)) / (pieces.std((2, 3), keepdim=True) + 1e-6)
+    return pieces
+
+def balanced(idx):
+    # scans that have a shapeless piece, with the same number from each machine
+    idx = idx[has_plain[idx]]
+    n = min((labels[idx] == k).sum() for k in range(len(MACHINES)))
+    rng = np.random.default_rng(SEED)
+    return np.concatenate([rng.choice(idx[labels[idx] == k], n, replace=False) for k in range(len(MACHINES))])
+
+texture_train, texture_test = balanced(train_idx), balanced(test_idx)
+print(f"level 4 uses {len(texture_train) // 4} learning and {len(texture_test) // 4} test scans per machine")
+
+fig, axes = plt.subplots(len(MACHINES), len(LEVELS), figsize=(9, 9))
+for k, machine in enumerate(MACHINES):
+    scan = int(texture_train[labels[texture_train] == k][0])
+    for j, level in enumerate(LEVELS):
+        ax = axes[k, j]
+        ax.imshow(make_view([scan], level, seed=j)[0, 0], cmap="gray"); no_axes(ax)
+        if k == 0: ax.set_title(LEVELS[level], fontsize=10)
+        if j == 0: ax.set_ylabel(machine, rotation=0, ha="right", va="center", color=INK2)
+fig.suptitle("What each level shows, one scan per machine", x=0.01, ha="left", fontweight="bold")
+plt.tight_layout()
+""",
+notes="""
+Walk left to right. Whole scans show layer shapes and background. A random piece keeps some structure. Evening out
+brightness removes the easy cues, but some pieces still show edges. Pure texture is static for every machine.
 """, minutes=1)
 
 md(r"""
-### 5.1 Your turn
+### 5.2 Your turn
 
-Below are 12 contrast-normalized 64 x 64 crops (level `crop64n`) from scans held out of training. Study the
-labeled row first, then write down a device letter for each numbered crop.
-""", notes="""
-Give the room about a minute. If people are following along, they type their answer string into the next cell;
-otherwise ask for a show of hands on two or three crops.
+Below are 12 pure-texture pieces (level 4) from scans held back for testing. Study the labeled examples in the top
+row, then write down a letter for each numbered piece.
+""",
+notes="""
+Give the room a minute. People following along type their answers into the cell after the picture; otherwise take
+a show of hands on two or three pieces.
 """, minutes=0.5)
 
 code(r"""
-LETTERS = {d: chr(65 + i) for i, d in enumerate(DEVICES)}
+LETTERS = {m: chr(65 + k) for k, m in enumerate(MACHINES)}
 rng = np.random.default_rng(2026)
-quiz_idx = rng.permutation(np.concatenate(
-    [rng.choice(test_idx[y[test_idx] == k], 3, replace=False) for k in range(len(DEVICES))]))
-quiz_views = make_view(quiz_idx, "crop64n", seed=2026)
+quiz_scans = rng.permutation(np.concatenate(
+    [rng.choice(texture_test[labels[texture_test] == k], 3, replace=False) for k in range(len(MACHINES))]))
+quiz_views = make_view(quiz_scans, "texture", seed=2026)
 
 fig = plt.figure(figsize=(12, 5.6))
 grid = fig.add_gridspec(3, 8, hspace=0.35)
-for k, d in enumerate(DEVICES):                          # labeled study examples: two per device
+for k, machine in enumerate(MACHINES):                    # labeled study examples: two per machine
     for s in range(2):
         ax = fig.add_subplot(grid[0, 2 * k + s])
-        idx = int(train_idx[y[train_idx] == k][10 + s])
-        ax.imshow(make_view([idx], "crop64n", seed=s)[0, 0], cmap="gray")
-        ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
-        if s == 0: ax.set_title(f"{LETTERS[d]} = {d}", loc="left")
-for q in range(12):                                     # the quiz
+        scan = int(texture_train[labels[texture_train] == k][5 + s])
+        ax.imshow(make_view([scan], "texture", seed=s)[0, 0], cmap="gray"); no_axes(ax)
+        if s == 0: ax.set_title(f"{LETTERS[machine]} = {machine}", loc="left")
+for q in range(12):                                      # the quiz
     ax = fig.add_subplot(grid[1 + q // 6, (q % 6) + 1])
-    ax.imshow(quiz_views[q, 0], cmap="gray")
-    ax.set_xticks([]); ax.set_yticks([]); ax.grid(False)
+    ax.imshow(quiz_views[q, 0], cmap="gray"); no_axes(ax)
     ax.set_title(f"#{q + 1}")
-fig.suptitle("Top row: labeled examples. Rows below: which device? Answer with letters.",
+fig.suptitle("Top row: labeled examples. Below: which machine? Answer with letters.",
              x=0.01, ha="left", fontweight="bold")
 plt.show()
 """,
 notes="""
-The top row is the "training data" for humans: two labeled crops per device. The bottom two rows are the quiz.
-The answer key is revealed in cell 5.3 after the model has trained, so do not scroll ahead.
+The top row is the people's "learning data": two labeled pieces per machine. The answers are revealed in 5.4, after
+the model has trained, so do not scroll ahead.
 """, minutes=1.5)
 
 code(r"""
-MY_GUESSES = ""   # e.g. "ABDCCABDAACB", one letter per numbered crop
+MY_GUESSES = ""   # for example "ABDCCABDAACB", one letter per numbered piece
 print(f"{len(MY_GUESSES.strip())} of 12 answers entered")
 """,
 notes="""
-Hands-on attendees fill this in. If nobody does, it is scored as an empty answer and the reveal still works.
-""", minutes=0.5)
+Hands-on attendees fill this in. An empty answer is fine; the reveal still works.
+""", minutes=0.25)
 
 md(r"""
-### 5.2 Now the model
+### 5.3 The simple ideas against the CNN
 
-A four-layer convolutional network, trained from scratch on each level with fresh random crops every epoch. On a
-GPU the four levels take under a minute; on a CPU-only VM, a few minutes.
-""", notes="""
-While the next cell runs, talk through what the network is: about 100 thousand parameters, far smaller than any
-modern vision model, no pretraining. A model this small doing this well tells you the fingerprint is easy to
-learn.
-""", minutes=0.5)
+For each level we now run all three approaches on the same learning scans and test them on the same held-back scans:
+
+* **Average picture** (idea 1): closest typical picture, pixel by pixel.
+* **Summary numbers** (idea 2): 24 brightness counts plus two graininess numbers, then a simple scoring rule.
+* **CNN**: learns its filters with the error-and-downhill loop, 8 passes over the learning scans.
+
+At level 4 each scan contributes 6 different shapeless pieces, to give every approach more texture to learn from.
+On a 4-core laptop this cell takes a few minutes.
+""",
+notes="""
+While it runs (about 4 minutes on a 4-core laptop), recap the three approaches in one line each: same place, summary
+numbers, sliding filters. Ask the room to predict which one wins at each level.
+
+The CNN's loop is the one from Part 3: compute the error, find downhill for every knob, step, repeat. The one
+refinement: the step size starts small, grows, then shrinks again near the end, which makes learning steadier.
+""", minutes=1)
 
 code(r"""
-EPOCHS = 12 if DEV == "cuda" else 6
+EPOCHS = 8
 
-def small_cnn(n_classes):
-    layers, ch = [], [1, 32, 64, 128]
-    for a, b in zip(ch[:-1], ch[1:]):
-        layers += [nn.Conv2d(a, b, 3, padding=1), nn.BatchNorm2d(b), nn.ReLU(), nn.MaxPool2d(2)]
-    return nn.Sequential(*layers, nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Linear(128, n_classes))
+def average_picture_rule(train_views, train_answers, test_views):
+    flat_train, flat_test = train_views.flatten(1).numpy(), test_views.flatten(1).numpy()
+    averages = np.stack([flat_train[train_answers == k].mean(0) for k in range(len(MACHINES))])
+    distances = ((flat_test[:, None, :] - averages[None]) ** 2).sum(2)
+    return distances.argmin(1)
 
-def train_level(level, epochs=EPOCHS, batch=128):
+def summary_numbers(views, level):
+    v = views[:, 0].numpy()
+    low, high = (-3, 3) if level in ("even", "texture") else (0, 1)
+    counts = np.stack([np.histogram(p, bins=24, range=(low, high))[0] for p in v]) / v[0].size
+    grain_across = np.abs(np.diff(v, axis=2)).mean((1, 2))
+    grain_down = np.abs(np.diff(v, axis=1)).mean((1, 2))
+    return np.column_stack([counts, grain_across, grain_down])
+
+def train_cnn(level, train_scans, pieces_per_scan):
     torch.manual_seed(SEED)
-    model = small_cnn(len(DEVICES)).to(DEV)
-    steps = epochs * ((len(train_idx) + batch - 1) // batch)
-    opt = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=4e-3, total_steps=steps)
-    targets = torch.from_numpy(y[train_idx])
-    for epoch in range(epochs):
+    model = build_cnn()
+    n = len(train_scans) * pieces_per_scan
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)   # a refined downhill step
+    schedule = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=4e-3, total_steps=EPOCHS * ((n + 127) // 128))
+    answers = torch.from_numpy(np.tile(labels[train_scans], pieces_per_scan))
+    for epoch in range(EPOCHS):
         model.train()
-        views = make_view(train_idx, level, seed=epoch)  # new random crops every epoch
-        for b in torch.randperm(len(train_idx)).split(batch):
-            if len(b) < 2:                               # BatchNorm needs at least two samples
+        views = torch.cat([make_view(train_scans, level, seed=100 * epoch + k) for k in range(pieces_per_scan)])
+        for batch in torch.randperm(n).split(128):
+            if len(batch) < 2:
                 continue
-            loss = F.cross_entropy(model(views[b].to(DEV)), targets[b].to(DEV))
-            opt.zero_grad(); loss.backward(); opt.step(); sched.step()
-    return model
+            error = F.cross_entropy(model(views[batch]), answers[batch])   # the error function from 3.3
+            optimizer.zero_grad()
+            error.backward()                                                # which way is downhill, for every knob
+            optimizer.step(); schedule.step()                               # take the step
+    return model.eval()
 
 @torch.no_grad()
-def predict(model, views):
-    model.eval()
-    return torch.cat([model(v.to(DEV)).argmax(1).cpu() for v in views.split(512)]).numpy()
+def cnn_predict(model, views):
+    return torch.cat([model(v).argmax(1) for v in views.split(512)]).numpy()
 
-models, accuracy = {}, {}
-for level in LEVELS:
+results, cnns = [], {}
+for level, name in LEVELS.items():
     t0 = time.time()
-    models[level] = train_level(level)
-    pred = predict(models[level], make_view(test_idx, level, seed=999))
-    accuracy[level] = (pred == y[test_idx]).mean()
-    print(f"{level:8s} test accuracy {accuracy[level]:.1%}   ({time.time() - t0:.0f} s on {DEV})")
+    learn, test = (texture_train, texture_test) if level == "texture" else (train_idx, test_idx)
+    per_scan = 6 if level == "texture" else 1
+    learn_views = torch.cat([make_view(learn, level, seed=k) for k in range(per_scan)])
+    learn_answers = np.tile(labels[learn], per_scan)
+    test_views = make_view(test, level, seed=999)
+    truth = labels[test]
+    average = (average_picture_rule(learn_views, learn_answers, test_views) == truth).mean()
+    rule = LogisticRegression(max_iter=2000).fit(summary_numbers(learn_views, level), learn_answers)
+    summary = (rule.predict(summary_numbers(test_views, level)) == truth).mean()
+    cnns[level] = train_cnn(level, learn, per_scan)
+    cnn_right = (cnn_predict(cnns[level], test_views) == truth).mean()
+    results.append({"level": name, "average picture": average, "summary numbers": summary, "CNN": cnn_right})
+    print(f"{name:26s} average picture {average:5.1%}   summary numbers {summary:5.1%}   CNN {cnn_right:5.1%}"
+          f"   ({time.time() - t0:.0f} s)")
+results = pd.DataFrame(results).set_index("level")
 """,
 notes="""
-Expected results from our dry run on OCT (GPU, 12 epochs): whole about 99 percent, crop64 about 92, crop64n
-about 90, crop32n about 80. On CPU with 6 epochs the harder levels land a few points lower. Chance is 25.
+Expected, from our test run on 4 processor cores (guessing is 25%), as average picture / summary numbers / CNN:
+whole scan 92 / 92 / 99%. Random piece 49 / 77 / 89%. Brightness evened out 27 / 43 / 80%. Pure texture
+39 / 73 / 87%. Other computers may differ by a point or two.
 
-If time is short, set LEVELS to ["whole", "crop64n"] before running; the story still works.
-""", minutes=3)
+If time is very short, skip this cell and talk through the saved results; every cell in the notebook already shows
+its output.
+""", minutes=4)
 
 code(r"""
-fig, ax = plt.subplots(figsize=(7, 4))
-bars = ax.bar(LEVELS, [accuracy[l] * 100 for l in LEVELS], color=SLOTS[0], width=0.6)
-ax.bar_label(bars, labels=[f"{accuracy[l]:.1%}" for l in LEVELS], padding=3, color=INK)
-ax.axhline(100 / len(DEVICES), color=INK2, linestyle="--", linewidth=1)
-ax.text(len(LEVELS) - 0.5, 100 / len(DEVICES) + 2, "chance", ha="right", color=INK2)
-ax.set_ylim(0, 105); ax.set_ylabel("test accuracy (%)"); ax.grid(axis="x", visible=False)
-ax.set_title(f"Naming the {MODALITY} device as the task gets harder", loc="left")
+methods = ["average picture", "summary numbers", "CNN"]
+x = np.arange(len(results))
+width = 0.26
+fig, ax = plt.subplots(figsize=(10, 4.8))
+for k, method in enumerate(methods):
+    bars = ax.bar(x + (k - 1) * width, results[method] * 100, width=width - 0.03, color=SLOTS[k], label=method)
+    if method == "CNN":
+        ax.bar_label(bars, labels=[f"{v:.0%}" for v in results[method]], padding=3, color=INK)
+ax.axhline(25, color=INK2, linestyle="--", linewidth=1)
+ax.text(x[-1] + 0.45, 27, "guessing", ha="right", color=INK2)
+ax.set_xticks(x, results.index)
+ax.set_ylim(0, 108); ax.set_ylabel("right answers on held-back scans (%)"); ax.grid(axis="x", visible=False)
+ax.legend(loc="upper right", frameon=False, ncols=3)
+ax.set_title("Which approach can still name the machine as the task gets harder?", loc="left")
 plt.tight_layout()
 """,
 notes="""
-The headline chart. Even a 32 pixel patch with brightness and contrast removed is identified far above chance.
-The model is reading texture: speckle and noise structure, not anatomy.
-""", minutes=1)
+The headline chart. On whole scans even the simple ideas work, because every scan is laid out the same way. As
+soon as the clue can be anywhere (levels 2 to 4), the average picture collapses and summary numbers lose ground,
+while the CNN holds up. On pure static, where people are at 25%, the CNN still names the machine close to nine
+times in ten.
+
+That is the answer to "why a CNN": sliding filters find a texture wherever it is, and texture is where the
+fingerprint lives.
+""", minutes=1.5)
 
 code(r"""
-from sklearn.metrics import confusion_matrix
-level = "crop64n"
-pred = predict(models[level], make_view(test_idx, level, seed=999))
-cm = confusion_matrix(y[test_idx], pred, normalize="true") * 100
+level = "texture"
+truth = labels[texture_test]
+guess = cnn_predict(cnns[level], make_view(texture_test, level, seed=999))
+table = pd.crosstab(pd.Series([MACHINES[k] for k in truth], name="true machine"),
+                    pd.Series([MACHINES[k] for k in guess], name="CNN's answer"), normalize="index") * 100
 fig, ax = plt.subplots(figsize=(5.5, 4.5))
-sns.heatmap(cm, annot=True, fmt=".0f", cmap=sns.blend_palette(["#f0efec", "#3987e5", "#0d366b"], as_cmap=True),
-            xticklabels=DEVICES, yticklabels=DEVICES, cbar=False, linewidths=1, linecolor=SURFACE, ax=ax)
+sns.heatmap(table, annot=True, fmt=".0f", cmap=BLUES, cbar=False, linewidths=1, linecolor=SURFACE, ax=ax)
 ax.grid(False)
-ax.set_xlabel("predicted device"); ax.set_ylabel("true device")
-ax.set_title(f"Where the model gets confused ({level}, % of each row)", loc="left")
+ax.set_title("Pure texture: where the CNN gets confused (% of each row)", loc="left")
 plt.tight_layout()
 """,
 notes="""
-Look for the biggest off-diagonal cells. In our runs the Maestro2 and the Triton are confused most often, and
-they are both Topcon devices. Same manufacturer, similar processing pipeline, similar fingerprint. Spectralis is
-the easiest to spot.
-""", minutes=1)
+Read along the rows: each row is one machine, and the numbers show where its pieces ended up. The diagonal is
+right answers. In our test run the Cirrus, Maestro2 and Spectralis pieces were all named correctly, and the only
+mistakes were Triton pieces, about half of which were called Maestro2. Both machines are made by Topcon, so they
+likely share optics and image processing. This answers the question from the gallery in Part 2.
+""", minutes=1, optional=True)
 
 md(r"""
-### 5.3 The reveal
-""", notes="""
+### 5.4 The reveal
+""",
+notes="""
 Ask everyone to lock in their answers before running the next cell.
 """, minutes=0.25)
 
 code(r"""
-quiz_pred = predict(models["crop64n"], quiz_views)
+quiz_guess = cnn_predict(cnns["texture"], quiz_views)
 answer = pd.DataFrame({
-    "crop": [f"#{q + 1}" for q in range(12)],
-    "true device": [f"{LETTERS[DEVICES[k]]} {DEVICES[k]}" for k in y[quiz_idx]],
-    "model": [f"{LETTERS[DEVICES[k]]} {DEVICES[k]}" for k in quiz_pred],
-}).set_index("crop")
-answer["you"] = list(MY_GUESSES.upper().ljust(12, "-"))[:12]
-model_score = (quiz_pred == y[quiz_idx]).sum()
-your_score = sum(g == t[0] for g, t in zip(answer["you"], answer["true device"]))
-print(f"model: {model_score}/12   you: {your_score}/12   chance: 3/12")
+    "piece": [f"#{q + 1}" for q in range(12)],
+    "right answer": [f"{LETTERS[MACHINES[k]]} {MACHINES[k]}" for k in labels[quiz_scans]],
+    "CNN": [f"{LETTERS[MACHINES[k]]} {MACHINES[k]}" for k in quiz_guess],
+}).set_index("piece")
+answer["you"] = list(MY_GUESSES.strip().upper().ljust(12, "-"))[:12]
+cnn_score = (quiz_guess == labels[quiz_scans]).sum()
+your_score = sum(g == r[0] for g, r in zip(answer["you"], answer["right answer"]))
+print(f"CNN: {cnn_score}/12   you: {your_score}/12   guessing: about 3/12")
 answer
 """,
 notes="""
-Read out the model's score, then ask who beat it. Almost nobody does. That is the point: the fingerprint is real
-(here, reproduced by the generator), invisible to us, and trivially learnable by a machine.
+Read out the CNN's score (12 of 12 in our test run), then ask who beat it. On pure static, almost nobody does.
 """, minutes=1.5)
 
 code(r"""
-def radial_spectrum(views):
-    # Average power at each spatial frequency, over a batch of normalized crops.
-    n = views.shape[-1]
-    win = torch.hann_window(n)[:, None] * torch.hann_window(n)[None, :]
-    power = torch.fft.fftshift(torch.fft.fft2(views[:, 0] * win), dim=(-2, -1)).abs().pow(2).mean(0)
-    yy, xx = torch.meshgrid(torch.arange(n) - n // 2, torch.arange(n) - n // 2, indexing="ij")
-    radius = (yy ** 2 + xx ** 2).sqrt().round().long().ravel()
-    sums = torch.zeros(radius.max() + 1).index_add_(0, radius, power.ravel())
-    return (sums / torch.bincount(radius))[1: n // 2].numpy()
+views = torch.cat([make_view(texture_test, "texture", seed=999 + k) for k in range(6)])[:, 0].numpy()
+owner = np.tile(labels[texture_test], 6)
+side_by_side = np.abs(np.diff(views, axis=2)).mean((1, 2))   # each pixel against its right-hand neighbor
+up_and_down = np.abs(np.diff(views, axis=1)).mean((1, 2))    # each pixel against the one below it
 
-fig, ax = plt.subplots(figsize=(8, 4.5))
-freqs = np.arange(1, 32)
-spectra = {d: np.log10(radial_spectrum(make_view(test_idx[y[test_idx] == k], "crop64n", seed=7)))
-           for k, d in enumerate(DEVICES)}
-span = max(s.max() for s in spectra.values()) - min(s.min() for s in spectra.values())
-label_y, gap = {}, 0.04 * span                           # direct labels, nudged apart so they never overlap
-for d in sorted(spectra, key=lambda d: spectra[d][-1]):
-    label_y[d] = max(spectra[d][-1], max(label_y.values(), default=-np.inf) + gap)
-for k, d in enumerate(DEVICES):
-    ax.plot(freqs, spectra[d], color=SLOTS[k])
-    ax.text(freqs[-1] + 0.6, label_y[d], d, color=INK2, va="center")
-ax.set_xlim(1, 37)
-ax.set_xlabel("spatial frequency (cycles per 64 pixel crop)  ->  finer texture")
-ax.set_ylabel("log10 power")
-ax.set_title("Why the model can tell: each device has its own texture spectrum", loc="left")
+fig, axes = plt.subplots(1, 2, figsize=(13, 4.3))
+for ax, values, title in [(axes[0], side_by_side, "side-by-side neighbors"), (axes[1], up_and_down, "up-and-down neighbors")]:
+    for k, machine in enumerate(MACHINES):
+        sns.kdeplot(values[owner == k], ax=ax, color=SLOTS[k], label=machine, linewidth=2)
+    ax.set_title(f"How different are {title}?", loc="left")
+    ax.set_xlabel("average difference, after evening out brightness"); ax.set_ylabel("how common"); ax.set_yticks([])
+axes[0].legend(frameon=False, loc="upper left")
+fig.suptitle("Why the model can tell: each machine has its own grain", x=0.01, ha="left", fontweight="bold")
 plt.tight_layout()
 """,
 notes="""
-The explanation slide. After removing brightness and contrast, the remaining difference is how much fine-grained
-texture each device has. Spectralis images are smoother (power drops fastest at high frequency), Maestro2 is the
-grainiest. A human eye does not measure this; a convolution does it in its first layer.
-
-Optional: rerun Part 5 with MODALITY = "Color Photography". Grayscale color photos are about 98 percent
-identifiable from the whole image and still well above chance from crops.
+The explanation. Even in pure static, each machine's grain has its own shape. Cirrus grain is smoother from side
+to side (stretched sideways), so its curve sits apart in the left panel. Spectralis grain is smoother from top to
+bottom, so it sits apart in the right panel. The two Topcon machines, Maestro2 and Triton, overlap almost
+completely on both numbers, which is exactly the pair the CNN mixes up. People see none of this; the CNN combines
+many such small differences across the whole piece.
 """, minutes=1.5, optional=True)
 
 # ---------------------------------------------------------------------------
-# 6. Grant ideas
+# 6. Meaning
 # ---------------------------------------------------------------------------
 md(r"""
-## 6. Problems worth a grant
+## 6. What it means
 
-Each idea below can be prototyped on the synthetic data today and then run on the real AI-READI release.
+* **Machines leave fingerprints, even in pure static.** A model meant to detect disease can learn the machine
+  instead. Any medical image model should be tested on machines and clinics it did not learn from.
+* **The synthetic data reproduced those fingerprints**, which makes it useful for building and testing methods
+  before applying for the real data.
+* **Use the simplest tool that works.** When pictures are laid out the same way, simple rules do well. A CNN earns
+  its place when the clue is a texture or pattern that can appear anywhere.
 
-**1. Device-invariant retinal biomarkers.** Part 5 shows how easily the device leaks into a model. Build
-representations that predict disease but *cannot* predict the device, and use the device classifier from this
-notebook as the leakage test. AI-READI is one of the few datasets where the same eyes are imaged on several
-machines, which makes this testable. (Related: the MICCAI 2026 DA-OCT cross-vendor OCT challenge on AI-READI.)
+**Questions worth a grant**
 
-**2. The retina as a window on metabolic health.** On the real data, images and labs belong to the same people:
-predict HbA1c, kidney function or diabetes severity group from retinal photos and OCT, and ask whether the retina
-shows who is moving toward health. Build and debug the pipeline on synthetic data now.
-
-**3. Glucose dynamics in daily life.** Link CGM variability to sleep, stress, activity and air quality at home.
-The real release has 10 days of 5 minute CGM plus Garmin and environmental streams on the same people; the
-synthetic summaries already show glycemic signals lining up with HbA1c and diagnosis.
-
-**4. Pathways toward health (salutogenesis).** The four severity groups from no diabetes to insulin form a
-spectrum. Model where individuals sit on it across eyes, heart, glucose and cognition, and which factors mark
-the people doing better than their group.
-
-**5. How faithful is synthetic multimodal data?** Part 4 found that strong relationships survived synthesis
-and several weaker ones did not. A systematic fidelity and privacy scorecard for multimodal synthetic health
-data, validated against the real AI-READI release, would help every Bridge2AI dataset.
+1. *Machine-independent eye measurements.* Teach models to see disease but not the machine, and use this notebook's
+   machine test as the check. AI-READI images the same people on several machines, which makes this testable.
+2. *The eye as a window on whole-body health.* In the real data, pictures and lab results belong to the same people:
+   can the retina show blood sugar control, kidney health or who is moving toward health?
+3. *Glucose in daily life.* Relate glucose monitor patterns to sleep, stress, activity and the home environment.
+4. *How faithful is synthetic data?* Part 2 found that strong relationships survived and some weaker ones did not.
+   A systematic way to measure that would help every synthetic health dataset.
 """,
 notes="""
-Pick two to discuss depending on the audience. For an imaging audience lead with 1 and 2; for a clinical
-audience lead with 3 and 4; for informatics and privacy people lead with 5.
+Pick two questions depending on the room: imaging people respond to 1 and 2, clinicians to 2 and 3, data and
+privacy people to 4. Each one uses something rare about AI-READI and can be prototyped on the synthetic data now.
 
-Why these are strong grant angles: each uses something rare about AI-READI (multi-device imaging of the same
-people, per-person multimodality, deliberate balance across severity and race and ethnicity), and each has a
-synthetic-data prototype path, which lowers risk in a proposal.
+Close by inviting ideas: what would you ask of this data?
+""", minutes=3)
 
-Invite the room: what would you add?
-""", minutes=4)
-
+# ---------------------------------------------------------------------------
+# 7. License
+# ---------------------------------------------------------------------------
 md(r"""
-## 7. Next steps and resources
+## 7. Data license and credits
 
-* **Real AI-READI data:** documentation at [docs.aireadi.org](https://docs.aireadi.org/), access through
-  [FAIRhub](https://fairhub.io/) under a data license agreement.
-* **This synthetic dataset:** AWS Marketplace listing *ADVANCE Center Synthetic AI-READI Dataset for T2DM Research*;
-  archive and license on [Zenodo (doi:10.5281/zenodo.22944362)](https://doi.org/10.5281/zenodo.22944362); generation
-  code at [github.com/nicholas-j-jackson/ai_readi_synth](https://github.com/nicholas-j-jackson/ai_readi_synth).
-* **Citing AI-READI:** AI-READI Consortium, *Nature Metabolism* 2024,
-  [doi:10.1038/s42255-024-01165-x](https://doi.org/10.1038/s42255-024-01165-x); study protocol, *BMJ Open* 2025,
-  [doi:10.1136/bmjopen-2024-097449](https://doi.org/10.1136/bmjopen-2024-097449).
-* **Device fingerprints and shortcut learning:** Zech et al., *PLOS Medicine* 2018,
-  [doi:10.1371/journal.pmed.1002683](https://doi.org/10.1371/journal.pmed.1002683).
+The sample in `data/` is covered by the **AI-READI Synthetic Data License Agreement** (Licensor: Washington University
+in St. Louis); the full text is in `data/LICENSE-AI-READI-synthetic-data.pdf`. In short: use it only if the license
+covers you, do not post or share it as a standalone download, and never try to identify the real people behind the
+source data. Figures from this notebook can appear in presentations and papers with the acknowledgement below.
 
-Try it yourself: change `MODALITY` in Part 5 to `"Color Photography"` or `"Infrared Reflectance"`, or swap the
-variables in Part 4 for your own hypothesis.
+**Acknowledgement.** Synthetic data: Jackson N, Espinosa Dice N, Yan C, Li Z, Jiang X, Lee A, Malin B. *Synthetic
+AI-READI Dataset for T2DM Research*, ADVANCE Center, Vanderbilt University Medical Center, 2026,
+[doi:10.5281/zenodo.22944362](https://doi.org/10.5281/zenodo.22944362). Source study: AI-READI Consortium,
+*Nature Metabolism* 2024, [doi:10.1038/s42255-024-01165-x](https://doi.org/10.1038/s42255-024-01165-x), and AI-READI
+dataset v3.0.0, [doi:10.60775/fairhub.3](https://doi.org/10.60775/fairhub.3). Funding: NIH Bridge2AI OT2OD032644,
+National Library of Medicine K99LM014428 and T15LM007450, National Human Genome Research Institute U54HG012510.
+Licensor: Washington University in St. Louis.
+
+**Further reading.** AI-READI documentation: [docs.aireadi.org](https://docs.aireadi.org/). Machine fingerprints in
+medical images: Zech et al., *PLOS Medicine* 2018, [doi:10.1371/journal.pmed.1002683](https://doi.org/10.1371/journal.pmed.1002683).
 """,
 notes="""
-Close by repeating the two caveats (synthetic images are not linked to the tabular participants; confirm
-findings on real data) and the one invitation (pick a problem from Part 6 and start prototyping this week).
-""", minutes=1)
+Say the license rule out loud once: this sample is for people covered by the license; do not forward it or post
+it. Showing figures from it in talks is fine with the acknowledgement.
+""", minutes=0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -1038,7 +1177,7 @@ def build():
     nb = nbf.v4.new_notebook()
     nb.metadata["kernelspec"] = {"name": "python3", "display_name": "Python 3", "language": "python"}
     nb.metadata["language_info"] = {"name": "python"}
-    notes_md = ["# Presenter notes: AI-READI synthetic dataset demo", "",
+    notes_md = ["# Presenter notes: which machine took this eye scan?", "",
                 "Generated from `build_notebook.py`; cell numbers match the notebook top to bottom. "
                 "Minutes are rough speaking time. Cells marked optional can be skipped if running long.", ""]
     section, total = None, 0.0

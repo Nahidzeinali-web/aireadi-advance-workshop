@@ -8,3 +8,8 @@ credentials.csv
 .ipynb_checkpoints/
 __pycache__/
 aireadi_cache/
+
+# synthetic sample data: license-restricted, see data/README.md
+data/*
+!data/README.md
+!data/LICENSE-AI-READI-synthetic-data.pdf

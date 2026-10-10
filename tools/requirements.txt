@@ -1,0 +1,7 @@
+# tools/build_sample_data.py and build_notebook.py
+boto3
+pydicom>=3.0
+numpy
+pandas>=2.0
+pillow
+nbformat
