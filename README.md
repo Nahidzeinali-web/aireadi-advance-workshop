@@ -1,8 +1,6 @@
 # AI-READI ADVANCE workshop
 
-A hands-on notebook for AI-READI workshop sessions. It introduces machine learning from first principles for a
-wide audience, then asks a computer to tell which machine took a retina scan from pieces so plain that people
-cannot. It uses a small sample of the ADVANCE Center synthetic AI-READI dataset and runs offline on a laptop
+A hands-on notebook for AI-READI workshop. It uses a small sample of the ADVANCE Center synthetic AI-READI dataset and runs offline on a laptop
 processor; no cloud account is needed.
 
 | File | What it is |
