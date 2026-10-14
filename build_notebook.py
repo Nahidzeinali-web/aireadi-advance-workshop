@@ -57,7 +57,8 @@ only skill is Shift + Enter.
 Say what people will leave with: three ideas that explain nearly all of machine learning (a rule with knobs, an
 error score, turning knobs downhill), and an intuition for why pictures need a special kind of model.
 
-Everything runs on a laptop processor from a small local data folder. No cloud account, no internet.
+Everything runs on each person's own laptop processor from a small local data folder. No cloud account; internet
+is needed only once, for the install cell in Part 1.
 """, minutes=1)
 
 # ---------------------------------------------------------------------------
@@ -66,37 +67,74 @@ Everything runs on a laptop processor from a small local data folder. No cloud a
 md(r"""
 ## 1. Check your computer
 
-Everything runs on an ordinary laptop. No graphics card, cloud account or internet connection is needed once the
-software is installed.
+Everything runs on an ordinary laptop. No graphics card or cloud account is needed, and internet only once, for the
+install below.
 
 | | Needed | Comfortable |
 |---|---|---|
 | Processor | 2 cores | 4 or more cores |
 | Memory | 4 GB | 8 GB |
 | Free disk space | 2 GB (software about 1.5 GB, data 75 MB) | |
-| Software | Python 3.10 or newer, with the packages in `requirements.txt` | |
+| Software | Python 3.10 or newer, and Jupyter (JupyterLab, Jupyter Notebook or VS Code) | |
+| Files | this notebook, with a folder named `data` next to it holding the workshop files | |
 | Time to run every cell | about 5 minutes on 4 cores | |
 
-The next two cells check the software and report what your computer has.
+**Run the next cell first.** It installs everything else the notebook needs into the Python running this notebook,
+and skips anything already installed. The first time, it downloads about 300 MB and can take a few minutes.
 """,
 notes="""
-If someone is running along on their own laptop, this is where problems show up. The most common one is a missing
-package: the next cell prints the exact command to fix it.
+Ask everyone to run the install cell before the session starts if they can; the download is the slowest part. On
+the day, start with it so slow downloads overlap with the introduction.
 
 The heaviest step (training in Part 5) uses at most 4 processor cores, so the laptop stays responsive.
 """, minutes=1)
 
 code(r"""
-import importlib.util
-needed = {"numpy": "numpy", "pandas": "pandas", "matplotlib": "matplotlib", "seaborn": "seaborn",
-          "sklearn": "scikit-learn", "torch": "torch", "PIL": "pillow"}
-missing = [pkg for module, pkg in needed.items() if importlib.util.find_spec(module) is None]
-print("all packages present" if not missing else
-      f"missing: {', '.join(missing)}. In a terminal, run: pip install -r requirements.txt")
+# Install whatever is missing into the Python that runs this notebook. Internet is needed the first time only.
+import importlib.metadata as metadata
+import platform, re, subprocess, sys
+
+NEEDED = {"numpy": "1.23", "pandas": "2.0", "matplotlib": "3.6", "seaborn": "0.13",
+          "scikit-learn": "1.2", "pillow": "9.0", "torch": "2.0"}       # package: lowest version that works
+
+def installed(package):
+    try:
+        return metadata.version(package)
+    except metadata.PackageNotFoundError:
+        return None
+
+def numbers(version):
+    return [int(re.match(r"\d*", part).group() or 0) for part in version.split(".")[:3]]
+
+def pip_install(*args):
+    if subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", *args]).returncode != 0:
+        raise RuntimeError("The install failed. Check the internet connection, or see 'Setup' in the README.")
+
+if sys.version_info < (3, 10):
+    raise RuntimeError(f"This notebook needs Python 3.10 or newer; this is Python {platform.python_version()}.")
+missing = [p for p, low in NEEDED.items() if installed(p) is None or numbers(installed(p)) < numbers(low)]
+regular = [f"{p}>={NEEDED[p]}" for p in missing if p != "torch"]
+if regular:
+    print("installing:", ", ".join(regular), flush=True)
+    pip_install(*regular)
+if "torch" in missing:
+    print("installing PyTorch (about 200 MB; this can take a few minutes)", flush=True)
+    # the processor-only build is much smaller; on a Mac the standard build already is
+    pip_install(f"torch>={NEEDED['torch']}",
+                *([] if sys.platform == "darwin" else ["--index-url", "https://download.pytorch.org/whl/cpu"]))
+for p in NEEDED:
+    print(f"{p:13s} {installed(p)}")
+print("ready" if not missing else
+      "installed. If the next cell shows an error, restart the kernel (Kernel menu, Restart) and run from the top.")
 """,
 notes="""
-Run it and move on. If something is missing, install it in a terminal and restart the notebook (Kernel, Restart).
-""", minutes=0.25)
+The cell checks each package and installs only what is missing or too old, using the same Python that runs the
+notebook, so it works the same in JupyterLab, Jupyter Notebook and VS Code.
+
+Common problems: no internet (the cell says the install failed); a computer-wide Python that refuses installs
+("externally managed environment"), which is solved by the virtual environment in the README's setup steps; and an
+error in the next cell right after installing, which a kernel restart fixes.
+""", minutes=1)
 
 code(r"""
 import os, platform, time
@@ -113,7 +151,19 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 
-DATA = Path("data")
+def find_data():
+    # The folder holding scans.csv: normally "data" next to this notebook. Also found up to two folders down, for
+    # example when the zip was unpacked into a folder of its own or arrived as "data 2".
+    places = [Path("data"), *sorted(p.parent for p in Path(".").glob("*/scans.csv")),
+              *sorted(p.parent for p in Path(".").glob("*/*/scans.csv")), Path(".")]
+    for place in places:
+        if (place / "scans.csv").is_file() and (place / "scans").is_dir():
+            return place
+    raise FileNotFoundError("The workshop data was not found. Put a folder named 'data' next to this notebook, "
+                            "holding scans/, gallery/, scans.csv, gallery.csv and participants.csv, then run this "
+                            "cell again.")
+
+DATA = find_data()
 SEED = 42
 cores = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
 torch.set_num_threads(min(4, cores))          # leave room for the rest of the computer
@@ -144,12 +194,12 @@ print(f"processor cores: {cores} (training will use {torch.get_num_threads()})")
 print("memory: " + ("not reported on this system" if memory_gb != memory_gb else
                     "enough (4 GB needed)" if memory_gb >= 4 else "below the 4 GB needed"))
 print(f"graphics card: {'present, not needed' if torch.cuda.is_available() else 'none, not needed'}")
-print(f"data folder: {len(list((DATA / 'scans').glob('*.png'))):,} scans found" if DATA.exists()
-      else "data folder not found: put the 'data' folder next to this notebook")
+print(f"data folder: {DATA} ({len(list((DATA / 'scans').glob('*.png'))):,} scans)")
 """,
 notes="""
-This loads the tools and sets a consistent chart style. The printout should say about 2,000 scans found. If it
-says the data folder is missing, the folder has to sit next to the notebook file.
+This loads the tools and sets a consistent chart style. The printout should show the data folder with 2,000
+scans. If the data is missing, the cell stops with instructions: the folder named data has to sit next to the
+notebook file, with the workshop files directly inside it.
 """, minutes=0.5)
 
 # ---------------------------------------------------------------------------

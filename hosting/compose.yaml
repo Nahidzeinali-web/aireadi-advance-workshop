@@ -1,0 +1,32 @@
+name: aireadi-workshop
+
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    image: aireadi-workshop-hub:latest
+    container_name: aireadi-hub
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      WORKSHOP_STORAGE: ${WORKSHOP_STORAGE:-/mnt/fast/aireadi-workshop}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - hub-state:/srv/jupyterhub/state
+      - ${WORKSHOP_STORAGE:-/mnt/fast/aireadi-workshop}:${WORKSHOP_STORAGE:-/mnt/fast/aireadi-workshop}
+    ports:
+      - "127.0.0.1:8799:8000"      # only this machine; published to the internet by tailscale funnel
+    networks:
+      - internal
+      - outside
+
+networks:
+  internal:                        # participant containers live here: no internet, no route to the host
+    name: aireadi_internal
+    internal: true
+  outside:
+    name: aireadi_outside
+
+volumes:
+  hub-state:

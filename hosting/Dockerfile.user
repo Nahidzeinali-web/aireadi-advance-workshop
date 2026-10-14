@@ -1,0 +1,12 @@
+# The environment each participant gets: Jupyter and the notebook's packages.
+FROM quay.io/jupyter/scipy-notebook:python-3.12
+
+# processor-only PyTorch; the notebook needs no graphics card
+RUN pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+
+# no "check for news" prompt in JupyterLab
+RUN mkdir -p /opt/conda/share/jupyter/lab/settings && \
+    printf '%s\n' '{"@jupyterlab/apputils-extension:notification": {"checkForUpdates": false, "fetchNews": "false"}}' \
+      > /opt/conda/share/jupyter/lab/settings/overrides.json
+
+# the notebook and data are not built in: the hub mounts them from the workshop storage folder (see build.sh)

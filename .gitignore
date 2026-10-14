@@ -13,3 +13,7 @@ aireadi_cache/
 data/*
 !data/README.md
 !data/LICENSE-AI-READI-synthetic-data.pdf
+
+# workshop hosting: secrets and build staging
+hosting/.env
+hosting/stage/

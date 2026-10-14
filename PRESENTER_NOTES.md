@@ -12,23 +12,30 @@ only skill is Shift + Enter.
 Say what people will leave with: three ideas that explain nearly all of machine learning (a rule with knobs, an
 error score, turning knobs downhill), and an intuition for why pictures need a special kind of model.
 
-Everything runs on a laptop processor from a small local data folder. No cloud account, no internet.
+Everything runs on each person's own laptop processor from a small local data folder. No cloud account; internet
+is needed only once, for the install cell in Part 1.
 
 ## Cell 2: 1. Check your computer (~1 min)
 
-If someone is running along on their own laptop, this is where problems show up. The most common one is a missing
-package: the next cell prints the exact command to fix it.
+Ask everyone to run the install cell before the session starts if they can; the download is the slowest part. On
+the day, start with it so slow downloads overlap with the introduction.
 
 The heaviest step (training in Part 5) uses at most 4 processor cores, so the laptop stays responsive.
 
-## Cell 3: code, in 1. Check your computer (~0.25 min)
+## Cell 3: code, in 1. Check your computer (~1 min)
 
-Run it and move on. If something is missing, install it in a terminal and restart the notebook (Kernel, Restart).
+The cell checks each package and installs only what is missing or too old, using the same Python that runs the
+notebook, so it works the same in JupyterLab, Jupyter Notebook and VS Code.
+
+Common problems: no internet (the cell says the install failed); a computer-wide Python that refuses installs
+("externally managed environment"), which is solved by the virtual environment in the README's setup steps; and an
+error in the next cell right after installing, which a kernel restart fixes.
 
 ## Cell 4: code, in 1. Check your computer (~0.5 min)
 
-This loads the tools and sets a consistent chart style. The printout should say about 2,000 scans found. If it
-says the data folder is missing, the folder has to sit next to the notebook file.
+This loads the tools and sets a consistent chart style. The printout should show the data folder with 2,000
+scans. If the data is missing, the cell stops with instructions: the folder named data has to sit next to the
+notebook file, with the workshop files directly inside it.
 
 ## Cell 5: 2. Meet the data (~1 min)
 
